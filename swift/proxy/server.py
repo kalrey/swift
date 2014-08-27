@@ -75,7 +75,7 @@ class Application(object):
             self.logger = get_logger(conf, log_route='proxy-server')
         else:
             self.logger = logger
-
+        os.environ['TZ'] = 'Asia/Chongqing'
         swift_dir = conf.get('swift_dir', '/etc/swift')
         self.swift_dir = swift_dir
         self.node_timeout = int(conf.get('node_timeout', 10))

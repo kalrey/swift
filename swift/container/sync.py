@@ -171,14 +171,28 @@ class ContainerSync(Daemon):
         """
         Runs container sync scans until stopped.
         """
-        sleep(random() * self.interval)
+        sleep_time = random() * self.interval
+        self.logger.info(_('Begin container sync "run_forever" mode, sleep_time is %ds' % sleep_time))
+        sleep(sleep_time)
         while True:
             begin = time()
+            self.logger.info(_('run container sync...,beigin audit_location_generator...'))
             all_locs = audit_location_generator(self.devices, DATADIR, '.db',
                                                 mount_check=self.mount_check,
                                                 logger=self.logger)
+            self.logger.info(_('run container sync...,end audit_location_generator...'))
             for path, device, partition in all_locs:
+                self.logger.info(_('begin container_sync, path is %s, device is %s, partition is %s' % (path, device, partition)))
                 self.container_sync(path)
+                self.logger.info(
+                    _('end sync:path %(path)s, %(sync)s synced [%(delete)s deletes, %(put)s '
+                      'puts], %(skip)s skipped, %(fail)s failed'),
+                    {'path': path,
+                     'sync': self.container_syncs,
+                     'delete': self.container_deletes,
+                     'put': self.container_puts,
+                     'skip': self.container_skips,
+                     'fail': self.container_failures})
                 if time() - self.reported >= 3600:  # once an hour
                     self.report()
             elapsed = time() - begin

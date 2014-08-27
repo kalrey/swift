@@ -45,6 +45,7 @@ class AccountController(object):
     """WSGI controller for the account server."""
 
     def __init__(self, conf, logger=None):
+        os.environ['TZ'] = 'Asia/Chongqing'
         self.logger = logger or get_logger(conf, log_route='account-server')
         self.log_requests = config_true_value(conf.get('log_requests', 'true'))
         self.root = conf.get('devices', '/srv/node')

@@ -79,6 +79,7 @@ class ContainerController(object):
                     'x-container-sync-key', 'x-container-sync-to']
 
     def __init__(self, conf, logger=None):
+        os.environ['TZ'] = 'Asia/Chongqing'
         self.logger = logger or get_logger(conf, log_route='container-server')
         self.log_requests = config_true_value(conf.get('log_requests', 'true'))
         self.root = conf.get('devices', '/srv/node')
