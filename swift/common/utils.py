@@ -65,6 +65,7 @@ utf8_encoder = codecs.getencoder('utf-8')
 from swift import gettext_ as _
 import swift.common.exceptions
 from swift.common.http import is_success, is_redirection, HTTP_NOT_FOUND
+from string import lower
 
 # logging doesn't import patched as cleanly as one would like
 from logging.handlers import SysLogHandler

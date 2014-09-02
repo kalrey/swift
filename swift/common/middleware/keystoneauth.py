@@ -230,7 +230,7 @@ class KeystoneAuth(object):
 
         # Check if a user tries to access an account that does not match their
         # token
-        if not self._reseller_check(account, tenant_id):
+        if not self._reseller_check(account, tenant_id) and not account == tenant_name:
             log_msg = 'tenant mismatch: %s != %s'
             self.logger.debug(log_msg, account, tenant_id)
             return self.denied_response(req)
@@ -283,10 +283,13 @@ class KeystoneAuth(object):
         #allow OPTIONS requests to proceed as normal
         if req.method == 'OPTIONS':
             return
-
-        is_authoritative_authz = (account and
-                                  account.startswith(self.reseller_prefix))
-        if not is_authoritative_authz:
+        #swift origin
+        # is_authoritative_authz = (account and
+        #                            account.startswith(self.reseller_prefix))
+        # if not is_authoritative_authz:
+        #     return self.denied_response(req)
+        #swift iflytek
+        if not account:
             return self.denied_response(req)
 
         referrers, roles = swift_acl.parse_acl(getattr(req, 'acl', None))
