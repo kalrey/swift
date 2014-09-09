@@ -65,7 +65,6 @@ utf8_encoder = codecs.getencoder('utf-8')
 from swift import gettext_ as _
 import swift.common.exceptions
 from swift.common.http import is_success, is_redirection, HTTP_NOT_FOUND
-from string import lower
 
 # logging doesn't import patched as cleanly as one would like
 from logging.handlers import SysLogHandler
@@ -802,9 +801,6 @@ def split_path(path, minsegs=1, maxsegs=None, rest_with_last=False):
             raise ValueError('Invalid path: %s' % quote(path))
     segs = segs[1:maxsegs]
     segs.extend([None] * (maxsegs - 1 - len(segs)))
-    for x in xrange(2):
-        if x < len(segs) and segs[x]:
-            segs[x] = lower(segs[x])
     return segs
 
 
