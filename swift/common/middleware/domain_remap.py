@@ -50,6 +50,7 @@ sync destinations.
 """
 
 from swift.common.swob import Request, HTTPBadRequest
+from swift.common.utils import get_logger
 
 
 class DomainRemapMiddleware(object):
@@ -63,13 +64,17 @@ class DomainRemapMiddleware(object):
     :param conf: The configuration dict for the middleware.
     """
 
-    def __init__(self, app, conf):
+    def __init__(self, app, conf, logger=None):
         self.app = app
         self.storage_domains = conf.get('storage_domain', 'example.com')
         if self.storage_domains:
             self.storage_domains = self.storage_domains.split(',')
         self.storage_domains = ['.' + x if x[0] != '.' else x for x in self.storage_domains]
         self.path_root = conf.get('path_root', 'v1').strip('/')
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = get_logger(conf, log_route="domain_remap")
 
 
     def __call__(self, env, start_response):
