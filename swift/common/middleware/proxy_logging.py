@@ -72,6 +72,7 @@ bandwidth usage will want to only sum up logs with no swift.source.
 """
 
 import time
+import json
 from urllib import quote, unquote
 
 from swift.common.swob import Request
@@ -80,6 +81,43 @@ from swift.common.utils import (get_logger, get_remote_client,
                                 InputProxy, list_from_csv)
 
 QUOTE_SAFE = '/:'
+
+
+class SwiftLog(object):
+    def __init__(self):
+        self.remoteClient = None
+        self.serverType = 'proxy-server'
+        self.remoteAddr = None
+        self.date = None
+        self.method = None
+        self.request = None
+        self.srvProtocol = None
+        self.status = None
+        self.referer = None
+        self.userAgent = None
+        self.authToken = None
+        self.bytesRecv = None
+        self.bytesSent = None
+        self.etag = None
+        self.transId = None
+        self.reqTime = None
+        self.source = None
+
+        self.serverName = None
+        self.serverPort = None
+        self.remotePort = None
+        self.tenantName = None
+        self.tenantId = None
+        self.userName = None
+        self.userId = None
+        self.host = None
+        self.identityStatus = None
+        self.contentType = None
+        self.timestamp = None
+        self.role = None
+
+    def __str__(self):
+        return json.dumps(self.__dict__)
 
 
 class ProxyLoggingMiddleware(object):
@@ -161,35 +199,43 @@ class ProxyLoggingMiddleware(object):
                                            for k, v in req.headers.items())
 
         method = self.method_from_req(req)
-        end_gmtime_str = time.strftime('%d/%b/%Y/%H/%M/%S',
-                                       time.gmtime(end_time))
         duration_time_str = "%.4f" % (end_time - start_time)
-        start_time_str = "%.9f" % start_time
-        end_time_str = "%.9f" % end_time
-        self.access_logger.info(' '.join(
-            quote(str(x) if x else '-', QUOTE_SAFE)
-            for x in (
-                get_remote_client(req),
-                req.remote_addr,
-                end_gmtime_str,
-                method,
-                the_request,
-                req.environ.get('SERVER_PROTOCOL'),
-                status_int,
-                req.referer,
-                req.user_agent,
-                self.obscure_sensitive(req.headers.get('x-auth-token')),
-                bytes_received,
-                bytes_sent,
-                req.headers.get('etag', None),
-                req.environ.get('swift.trans_id'),
-                logged_headers,
-                duration_time_str,
-                req.environ.get('swift.source'),
-                ','.join(req.environ.get('swift.log_info') or ''),
-                start_time_str,
-                end_time_str
-            )))
+
+        logInfo = SwiftLog()
+        logInfo.remoteClient = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(get_remote_client(req))
+        logInfo.remoteAddr = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.remote_addr)
+        logInfo.date = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(time.strftime('%Y/%m/%d/%H/%M/%S', time.localtime()))
+        logInfo.method = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(method)
+        logInfo.request = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(the_request)
+        logInfo.srvProtocol = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('SERVER_PROTOCOL'))
+        logInfo.status = status_int
+        logInfo.referer = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.referer)
+        logInfo.userAgent = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.user_agent)
+        logInfo.authToken = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(self.obscure_sensitive(req.headers.get('x-auth-token')))
+        logInfo.bytesRecv = bytes_received
+        logInfo.bytesSent = bytes_sent
+        logInfo.etag = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.headers.get('etag', None))
+        logInfo.transId = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.trans_id'))
+        logInfo.reqTime = duration_time_str
+        logInfo.source = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.source'))
+        logInfo.serverName = req.environ.get('SERVER_NAME', None)
+        serverPortStr = req.environ.get('SERVER_PORT', None)
+        logInfo.serverPort = int(serverPortStr) if serverPortStr else None
+        remotePortStr = req.environ.get('REMOTE_PORT', None)
+        logInfo.remotePort = int(remotePortStr) if remotePortStr else None
+        logInfo.tenantName = req.headers.get('X-Tenant-Name', None)
+        logInfo.tenantId = req.headers.get('X-Tenant-Id', None)
+        logInfo.userName = req.headers.get('X-User-Name', None)
+        logInfo.userId = req.headers.get('X-User-Id', None)
+        logInfo.host = req.headers.get('Host', None)
+        logInfo.identityStatus = req.headers.get('X-Identity-Status', None)
+        logInfo.contentType = req.headers.get('Content-Type', None)
+        logInfo.timestamp = req.headers.get('X-Timestamp', None)
+        logInfo.role = req.headers.get('X-Role', None)
+
+        self.access_logger.notice(logInfo)
+
+
         # Log timing and bytes-transferred data to StatsD
         metric_name = self.statsd_metric_name(req, status_int, method)
         # Only log data for valid controllers (or SOS) to keep the metric count
