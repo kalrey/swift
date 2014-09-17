@@ -2,7 +2,6 @@ __author__ = 'kalrey'
 
 
 from swift.common.utils import split_path
-from webob import Request
 import logging
 import re
 from string import lower
