@@ -1,0 +1,29 @@
+[DEFAULT]
+# You can specify default log routing here if you want:
+# log_name = swift
+# log_facility = LOG_LOCAL0
+# log_level = INFO
+# log_headers = false
+# log_address = /dev/log
+#
+# Use a comma separated list of full url (http://foo.bar:1234,https://foo.bar)
+# cors_allow_origin =
+#
+# client_timeout = 60
+# eventlet_debug = false
+
+[pipeline:main]
+pipeline = catch_errors healthcheck proxy-logging cache bulk slo ratelimit tempauth container-quotas account-quotas proxy-logging proxy-server
+
+[app:container-proxy-server]
+use = egg:swift#containerproxy
+# You can override the default log routing for this app here:
+# set log_name = proxy-server
+# set log_facility = LOG_LOCAL0
+# set log_level = INFO
+# set log_address = /dev/log
+
+# node_timeout = 10
+# conn_timeout = 0.5
+
+
