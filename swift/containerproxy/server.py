@@ -17,16 +17,15 @@ from gettext import gettext as _
 
 from eventlet import Timeout
 
-from swift.common.utils import  split_path, get_logger, \
-    cache_from_env, generate_trans_id, \
-    get_remote_client
+from swift.common.utils import  split_path, get_logger, generate_trans_id, \
+    get_remote_client, config_true_value
 from swift.common.swob import HTTPBadRequest, HTTPForbidden, \
     HTTPMethodNotAllowed, HTTPNotFound, HTTPPreconditionFailed, \
     HTTPServerError, Request
 from swift.common.constraints import check_utf8
 from swift.containerproxy.controllers.container import  ContainerController
 from swift.containerproxy.controllers.account import AccountController
-from swift.containerproxy.backends.sql import PooledDB
+from swift.containerproxy.backends.sql import SwiftPooledDB
 
 
 class Application(object):
@@ -46,16 +45,20 @@ class Application(object):
 
         self.offsite_proxy_dict = {}
         for s in self.offsite_proxy_list:
-            k, v = s.split('=')
+            k, v = s.split('#')
             self.offsite_proxy_dict[k] = v
 
-
         self.location = conf.get('location', 'hf')
-        self.connection = conf.get('database.connection', '')
-        self.dbpool = PooledDB(self.connection)
+        self.connection = conf.get('connection', '')
+        self.dbpool = SwiftPooledDB(self.connection)
 
         self.node_timeout = int(conf.get('node_timeout', 10))
         self.conn_timeout = float(conf.get('conn_timeout', 0.5))
+
+        self.allow_account_management = \
+            config_true_value(conf.get('allow_account_management', 'no'))
+
+        self.trans_id_suffix = conf.get('trans_id_suffix', '')
 
     def get_controller(self, path):
         """
@@ -80,8 +83,6 @@ class Application(object):
 
     def __call__(self, env, start_response):
         try:
-            if self.memcache is None:
-                self.memcache = cache_from_env(env)
             req = self.update_request(Request(env))
             return self.handle_request(req)(env, start_response)
         except UnicodeError:
@@ -110,7 +111,7 @@ class Application(object):
                 return HTTPPreconditionFailed(request=req,
                                                   body='Invalid UTF8 or contains NULL')
             try:
-                controller, path_parts = self.check_controller(req.path)
+                controller, path_parts = self.get_controller(req.path)
                 p = req.path_info
                 if isinstance(p, unicode):
                     p = p.encode('utf-8')

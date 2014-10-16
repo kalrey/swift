@@ -17,27 +17,15 @@ from DBUtils import PooledDB
 import MySQLdb
 import  re
 
-class PooledDB(object):
+class SwiftPooledDB(object):
     def __init__(self, connection):
-        self.db_init(connection)
-
-    def db_init(self, connection):
+        self.username = None
+        self.password = None
+        self.host = None
+        self.database = None
         self.parse_rfc1738_args(connection)
-        self.pool = PooledDB.PooledDB(MySQLdb, maxusage=20, host=self.host, user=self.username, passwd=self.password,
+        self._pool = PooledDB.PooledDB(creator=MySQLdb, maxusage=20, host=self.host, user=self.username, passwd=self.password,
                                       db=self.database)
-    def execute(self, sql):
-        conn = self.pool.connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(sql)
-            table = cursor.fetchall()
-        except Exception, e:
-            print e
-            table = None
-        finally:
-            cursor.close()
-            conn.close()
-            return table
 
     def parse_rfc1738_args(self, connection):
         pattern = re.compile(r'''
@@ -64,13 +52,53 @@ class PooledDB(object):
 
             if components['username'] is not None:
                 self.username = self._rfc_1738_unquote(components['username'])
-        if components['password'] is not None:
-            self.password = self._rfc_1738_unquote(components['password'])
+            if components['password'] is not None:
+                self.password = self._rfc_1738_unquote(components['password'])
 
-        ipv4host = components.pop('ipv4host')
-        ipv6host = components.pop('ipv6host')
-        self.host = ipv4host or ipv6host
+            ipv4host = components.pop('ipv4host')
+            ipv6host = components.pop('ipv6host')
+            self.host = ipv4host or ipv6host
 
-    def _rfc_1738_unquote(text):
+    def _rfc_1738_unquote(self, text):
         from urllib import unquote
         return unquote(text)
+
+    def get_conn(self):
+        return self._pool.connection()
+
+    def execute(self, sql):
+        conn = self.get_conn()
+        cursor = conn.cursor()
+        rowcount = cursor.execute(sql)
+        cursor.close()
+        conn.close()
+
+        return rowcount
+
+    def queryone(self, sql):
+        conn = self.get_conn()
+        cursor = conn.cursor()
+        rowcount = cursor.execute(sql)
+        if rowcount > 0:
+            res = cursor.fetchone()
+        else:
+            res = None
+
+        cursor.close()
+        conn.close()
+
+        return res
+
+    def queryall(self, sql):
+        conn = self.get_conn()
+        cursor = conn.cursor()
+        rowcount = cursor.execute(sql)
+        if rowcount > 0:
+            res = cursor.fetchall()
+        else:
+            res = None
+
+        cursor.close()
+        conn.close()
+
+        return res
