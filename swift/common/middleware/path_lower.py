@@ -20,7 +20,7 @@ class PathLower(object):
 
     def __init__(self, app, conf):
         self.LOG = logging.getLogger(conf.get('log_name', __name__))
-        self.LOG.info('Starting UrlReduce middleware')
+        self.LOG.info('Starting PathLower middleware')
         self.app = app
         self.conf = conf
         self.path_root = conf.get('path_root', 'v1').strip('/')
