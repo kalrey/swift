@@ -22,6 +22,7 @@ from time import time
 import itertools
 
 from eventlet import Timeout
+import logging
 
 from swift import __canonical_version__ as swift_version
 from swift.common import constraints
@@ -375,6 +376,7 @@ class Application(object):
         except HTTPException as error_response:
             return error_response
         except (Exception, Timeout):
+            logging.exception('Unhandled exception')
             self.logger.exception(_('ERROR Unhandled exception in request'))
             return HTTPServerError(request=req)
 
