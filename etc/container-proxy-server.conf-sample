@@ -27,7 +27,5 @@ use = egg:swift#containerproxy
 # conn_timeout = 0.5
 location = hf
 offsite_proxy_list = hf#172.16.60.115:8080
-
-[database]
 connection = mysql://keystone:KEYSTONE_DBPASS@172.16.60.121/keystone
 

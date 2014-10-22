@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from DBUtils import PooledDB
+from DBUtils.PooledDB import PooledDB
 import MySQLdb
 import  re
 
@@ -24,8 +24,7 @@ class SwiftPooledDB(object):
         self.host = None
         self.database = None
         self.parse_rfc1738_args(connection)
-        self._pool = PooledDB.PooledDB(creator=MySQLdb, maxusage=20, host=self.host, user=self.username, passwd=self.password,
-                                      db=self.database)
+        self._pool = PooledDB(MySQLdb, mincached=0, maxcached=10, maxshared=10, maxusage=20,host=self.host, user=self.username, passwd=self.password, db=self.database, autocommit=True)
 
     def parse_rfc1738_args(self, connection):
         pattern = re.compile(r'''
@@ -67,38 +66,52 @@ class SwiftPooledDB(object):
         return self._pool.connection()
 
     def execute(self, sql):
-        conn = self.get_conn()
-        cursor = conn.cursor()
-        rowcount = cursor.execute(sql)
-        cursor.close()
-        conn.close()
+        rowcount = 0
+        try:
+            conn = self.get_conn()
+            cursor = conn.cursor()
+            rowcount = cursor.execute(sql)
+            cursor.close()
+            conn.close()
+        except Exception, e:
+            print e
 
         return rowcount
 
     def queryone(self, sql):
-        conn = self.get_conn()
-        cursor = conn.cursor()
-        rowcount = cursor.execute(sql)
-        if rowcount > 0:
-            res = cursor.fetchone()
-        else:
-            res = None
+        res = None
+        try:
+            conn = self.get_conn()
+            cursor = conn.cursor()
+            rowcount = cursor.execute(sql)
+            if rowcount > 0:
+                res = cursor.fetchone()
+            else:
+                res = None
 
-        cursor.close()
-        conn.close()
+            cursor.close()
+            conn.close()
+        except Exception, e:
+            print e
 
         return res
 
     def queryall(self, sql):
-        conn = self.get_conn()
-        cursor = conn.cursor()
-        rowcount = cursor.execute(sql)
-        if rowcount > 0:
-            res = cursor.fetchall()
-        else:
-            res = None
+        res = None
+        try:
+            conn = self.get_conn()
+            cursor = conn.cursor()
+            rowcount = cursor.execute(sql)
+            if rowcount > 0:
+                res = cursor.fetchall()
+            else:
+                res = None
 
-        cursor.close()
-        conn.close()
+            cursor.close()
+            conn.close()
+        except Exception, e:
+            print e
 
         return res
+
+

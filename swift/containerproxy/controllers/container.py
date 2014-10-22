@@ -71,13 +71,17 @@ class ContainerController(Controller):
             self.container_location = unquote(req.headers['location'])
 
     def get_container_host(self):
+        need_put_to_database = False
         if self.container_location is None:
             self.get_container_location_from_db()
         if self.container_location is None:
+            need_put_to_database = True
             self.container_location = self.app.location
 
         if self.app.offsite_proxy_dict.has_key(self.container_location):
             self.container_host = self.app.offsite_proxy_dict[self.container_location]
+
+        return need_put_to_database
 
     def put_container_location(self):
         sql = 'INSERT INTO location(account_name, container_name, location) VALUES (\'%s\', \'%s\', \'%s\')' \
@@ -107,7 +111,7 @@ class ContainerController(Controller):
         :param src: the response from the backend
         :returns: True if found, False if not
         """
-        status, reason = src.status.split(' ')
+        status, reason = src.status.split(' ', 1)
         status = int(status)
         if self.server_type == 'Object' and status == 416:
             return True
@@ -127,7 +131,7 @@ class ContainerController(Controller):
                     possible_source = conn.getresponse()
                     possible_source.swift_conn = conn
             except (Exception, Timeout):
-                print "timeout"
+                self.app.logger.warning(" Timeout, %s:%s %s %s" %(ipaddr, port, req.method, req.path))
 
             if possible_source is not None:
                 res.status = possible_source.status
@@ -139,8 +143,13 @@ class ContainerController(Controller):
         return res
 
     def GETorHEAD(self, req):
-        self.get_container_host()
-        return self.forword_request(req)
+        need_put_to_database = self.get_container_host()
+        resp = self.forword_request(req)
+
+        if need_put_to_database and self.is_good_source(resp):
+            self.put_container_location()
+
+        return resp
 
     @public
     @delay_denial

@@ -82,6 +82,7 @@ class AccountController(Controller):
                 with Timeout(self.app.node_timeout):
                     possible_source = conn.getresponse()
                     possible_source.swift_conn = conn
+                    possible_source.location = k
             except (Exception, Timeout):
                continue
 
@@ -128,7 +129,10 @@ class AccountController(Controller):
                 for source in self.sources:
                     d = source.read()
                     if d and len(d) > 0:
-                        data.extend(json.loads(d))
+                        container_list = json.loads(d)
+                        for container in container_list:
+                            container['location'] = source.location
+                        data.extend(container_list)
                         account_list = json.dumps(data)
             elif resp.content_type.endswith('/xml'):
                 output_list = ['<?xml version="1.0" encoding="UTF-8"?>',
@@ -140,8 +144,8 @@ class AccountController(Controller):
                         lst_node = root.getiterator("container")
                         for node in lst_node:
                             item =  '<container><name>%s</name><count>%s</count>' \
-                                '<bytes>%s</bytes></container>' % \
-                                (node.find('name').text, node.find('count').text, node.find('bytes').text)
+                                '<bytes>%s</bytes><location>%s</location></container>' % \
+                                (node.find('name').text, node.find('count').text, node.find('bytes').text, source.location)
                             output_list.append(item)
 
                 output_list.append('</account>')
@@ -203,7 +207,30 @@ class AccountController(Controller):
                 elif resp.headers['X-PUT-Timestamp'] > source.getheader('X-PUT-Timestamp'):
                     resp.headers['X-PUT-Timestamp'] = source.getheader('X-PUT-Timestamp')
 
-            if  source.getheader('Content-Type', None) is not None:
+            headers = source.getheaders()
+            if hasattr(headers, 'items'):
+                headers = headers.items()
+
+            policy_dict ={}
+            for name, value in headers:
+                    if name == 'etag':
+                        resp.headers[name] = value.replace('"', '')
+                    if 'x-account-storage-policy' in name:
+                        if name in policy_dict:
+                            policy_dict[name] = int(policy_dict[name]) + int(value)
+                        else:
+                            policy_dict[name] = value
+                    elif name not in ('date', 'content-length', 'content-type',
+                                      'connection', 'x-put-timestamp', 'x-delete-after',
+                                      'x-account-container-count', 'x-account-object-count', 'x-account-bytes-used',
+                                      'x-timestamp', 'x-put-timestamp'):
+                        resp.headers[name] = value
+
+            for (k, v) in policy_dict.items():
+                resp.headers[k] = v
+
+            if source.getheader('Content-Type'):
+                resp.charset = None
                 resp.content_type = source.getheader('Content-Type')
 
             resp.status = source.status
@@ -247,9 +274,8 @@ class AccountController(Controller):
             resp.status = source.status
             resp = self.update_headers(resp)
 
-            headers = source.getheaders()
-            resp.content_type = headers('Content-Type')
-            resp.content_length = headers('Content-Length')
+            resp.content_type = source.getheader('Content-Type', 'text/html')
+            resp.content_length = source.getheader('Content-Length', '0')
 
             return resp
 
