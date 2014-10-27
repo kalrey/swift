@@ -71,7 +71,6 @@ class AccountController(Controller):
         return is_success(src.status) or is_redirection(src.status)
 
     def forword_request(self, req):
-        newest = config_true_value(req.headers.get('x-newest', 'f'))
         for (k, v) in self.app.offsite_proxy_dict.items():
             try:
                 with ConnectionTimeout(self.app.conn_timeout):
@@ -110,8 +109,6 @@ class AccountController(Controller):
                     self.bodies.append('')
                     self.source_headers.append('')
                     self.sources.append(possible_source)
-                    if not newest:  # one good source is enough
-                        break
             else:
                 self.statuses.append(possible_source.status)
                 self.reasons.append(possible_source.reason)

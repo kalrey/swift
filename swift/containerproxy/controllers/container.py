@@ -19,13 +19,13 @@ from urllib import unquote
 
 from swift.common.utils import public
 from swift.proxy.controllers.base import Controller, delay_denial, \
-    cors_validation, update_headers
+    cors_validation, update_headers, close_swift_conn
 from swift.common.swob import HTTPBadRequest
 from swift.common.bufferedhttp import http_connect_raw
 from eventlet.timeout import Timeout
 from swift.common.exceptions import ConnectionTimeout
 from swift.common.swob import Response
-from swift.common.http import  is_success, is_redirection
+from swift.common.http import  is_success, is_redirection, HTTP_NOT_FOUND
 
 class ContainerController(Controller):
     def __init__(self, app, account_name, container_name, **kwargs):
@@ -39,20 +39,6 @@ class ContainerController(Controller):
         self.bodies =[]
         self.source_headers = []
         self.reasons = []
-        self.container_host = None
-        self.container_location = None
-
-    def clean_acls(self, req):
-        if 'swift.clean_acl' in req.environ:
-            for header in ('x-container-read', 'x-container-write'):
-                if header in req.headers:
-                    try:
-                        req.headers[header] = \
-                            req.environ['swift.clean_acl'](header,
-                                                           req.headers[header])
-                    except ValueError, err:
-                        return HTTPBadRequest(request=req, body=str(err))
-        return None
 
     def get_container_location_from_db(self):
         sql = 'SELECT location FROM location WHERE account_name = \'%s\' AND container_name = \'%s\'' \
@@ -61,27 +47,23 @@ class ContainerController(Controller):
         d = self.dbpool.queryone(sql)
         self.container_location = None
         if d is not None :
-            for row in d:
-                self.container_location = row[0]
-
-    def get_container_location_from_request(self, req):
-        if 'location' not in req.headers or req.headers['location'] is None:
-            self.container_location =  self.app.location
+            return d[0]
         else:
-            self.container_location = unquote(req.headers['location'])
+            return None
 
-    def get_container_host(self):
-        need_put_to_database = False
-        if self.container_location is None:
-            self.get_container_location_from_db()
-        if self.container_location is None:
-            need_put_to_database = True
-            self.container_location = self.app.location
+    def get_container_host(self, req):
+        container_location = None
+        container_host = None
+        if 'location' in req.headers and req.headers['location'] is not None:
+            container_location = unquote(req.headers['location'])
 
-        if self.app.offsite_proxy_dict.has_key(self.container_location):
-            self.container_host = self.app.offsite_proxy_dict[self.container_location]
+        if container_location is None:
+            container_location = self.get_container_location_from_db()
 
-        return need_put_to_database
+        if container_location and self.app.offsite_proxy_dict.has_key(self.container_location):
+            container_host = self.app.offsite_proxy_dict[self.container_location]
+
+        return container_host
 
     def put_container_location(self):
         sql = 'INSERT INTO location(account_name, container_name, location) VALUES (\'%s\', \'%s\', \'%s\')' \
@@ -93,15 +75,24 @@ class ContainerController(Controller):
               %(self.account_name, self.container_name)
         self.dbpool.execute(sql)
 
-    def is_container_duplicate(self):
-        sql = 'SELECT * from location WHERE account_name = \'%s\' AND container_name = \'%s\'' \
-              % (self.account_name, self.container_name)
+    def is_container_duplicate(self, req):
+        for (k, v) in self.app.offsite_proxy_dict.items():
+            try:
+                with ConnectionTimeout(self.app.conn_timeout):
+                    headers = self.generate_request_headers(req, additional=req.headers)
+                    ipaddr, port = v.split(':')
+                    conn = http_connect_raw(ipaddr, port, 'HEAD', req.path, headers=headers, query_string=req.query_string)
 
-        table = self.dbpool.queryone(sql)
-        if not table:
-            return False
+                with Timeout(self.app.node_timeout):
+                    possible_source = conn.getresponse()
+                    possible_source.swift_conn = conn
+            except (Exception, Timeout):
+               continue
 
-        return True
+            if possible_source and self.is_good_source(possible_source):
+                return True
+
+        return False
 
     def is_good_source(self, src):
         """
@@ -111,42 +102,85 @@ class ContainerController(Controller):
         :param src: the response from the backend
         :returns: True if found, False if not
         """
-        status, reason = src.status.split(' ', 1)
+        if isinstance(src.status, int):
+            status = src.status
+        else:
+            status, reason = src.status.split(' ', 1)
         status = int(status)
         if self.server_type == 'Object' and status == 416:
             return True
         return is_success(status) or is_redirection(status)
 
-    def forword_request(self, req):
-        res = Response(request=req)
-        if self.container_host is not None:
-            possible_source = None
+    def forword_request(self, req, host=None):
+        hosts = []
+        source = None
+        statuses = []
+        bodies =[]
+        source_headers = []
+        reasons = []
+
+        resp = Response(request=req)
+
+        if host is None:
+            hosts = [v for (k, v) in self.app.offsite_proxy_dict.items()]
+        else:
+            hosts.append(host)
+
+        for hst in hosts:
             try:
                 with ConnectionTimeout(self.app.conn_timeout):
                     headers = self.generate_request_headers(req, additional=req.headers)
-                    ipaddr, port = self.container_host.split(':')
+                    ipaddr, port = hst.split(':')
                     conn = http_connect_raw(ipaddr, port, req.method, req.path, headers=headers, query_string=req.query_string)
 
                 with Timeout(self.app.node_timeout):
                     possible_source = conn.getresponse()
                     possible_source.swift_conn = conn
             except (Exception, Timeout):
-                self.app.logger.warning(" Timeout, %s:%s %s %s" %(ipaddr, port, req.method, req.path))
+               continue
 
-            if possible_source is not None:
-                res.status = possible_source.status
-                res.body = possible_source.read()
-                update_headers(res, possible_source.getheaders())
-                return res
+            if self.is_good_source(possible_source):
+                if not float(possible_source.getheader('X-PUT-Timestamp', 1)):
+                    statuses.append(HTTP_NOT_FOUND)
+                    reasons.append('')
+                    bodies.append('')
+                    source_headers.append('')
+                    close_swift_conn(possible_source)
+                else:
+                    statuses.append(possible_source.status)
+                    reasons.append(possible_source.reason)
+                    bodies.append('')
+                    source_headers.append('')
+                    source = possible_source
+                    break
+            else:
+                statuses.append(possible_source.status)
+                reasons.append(possible_source.reason)
+                bodies.append(possible_source.read())
+                source_headers.append(possible_source.getheaders())
 
-        res.status = '503 Internal Server Error'
-        return res
+        if source:
+            close_swift_conn(source)
+            update_headers(resp, source.getheaders())
+            resp.accept_ranges = 'bytes'
+            resp.content_length = source.getheader('Content-Length')
+            if source.getheader('Content-Type'):
+                resp.charset = None
+                resp.content_type = source.getheader('Content-Type')
+            resp.status = source.status
+            resp.body = source.read()
+        else:
+            resp.status = statuses[0]
+            resp.body = bodies[0]
+            update_headers(resp, source_headers[0])
+
+        return resp
 
     def GETorHEAD(self, req):
-        need_put_to_database = self.get_container_host()
-        resp = self.forword_request(req)
+        container_host  = self.get_container_host(req)
+        resp = self.forword_request(req, container_host)
 
-        if need_put_to_database and self.is_good_source(resp):
+        if self.is_good_source(resp):
             self.put_container_location()
 
         return resp
@@ -166,15 +200,14 @@ class ContainerController(Controller):
     @public
     @cors_validation
     def PUT(self, req):
-        if self.is_container_duplicate():
+        if self.is_container_duplicate(req):
             resp = HTTPBadRequest(request=req)
-            resp.body = 'container is duplicate'
+            resp.body = 'Container Name Duplicate '
             return resp
 
-        self.get_container_location_from_request(req)
-        self.get_container_host()
+        container_host = self.get_container_host(req)
 
-        res = self.forword_request(req)
+        res = self.forword_request(req, container_host)
         if self.is_good_source(res):
             self.put_container_location()
 
@@ -183,14 +216,14 @@ class ContainerController(Controller):
     @public
     @cors_validation
     def POST(self, req):
-        self.get_container_host()
-        return self.forword_request(req)
+        container_host = self.get_container_host(req)
+        return self.forword_request(req, container_host)
 
     @public
     @cors_validation
     def DELETE(self, req):
-        self.get_container_host()
-        res = self.forword_request(req)
+        container_host = self.get_container_host(req)
+        res = self.forword_request(req, container_host)
         if self.is_good_source(res):
             self.delete_container_host()
         return res
