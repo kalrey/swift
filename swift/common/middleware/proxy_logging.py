@@ -184,10 +184,13 @@ class ProxyLoggingMiddleware(object):
         :param start_time: timestamp request started
         :param end_time: timestamp request completed
         """
-        req_path = get_valid_utf8_str(req.path)
-        the_request = quote(unquote(req_path), QUOTE_SAFE)
-        if req.query_string:
-            the_request = the_request + '?' + req.query_string
+        if req.environ.get('ORIG_PATH_INFO'):
+            the_request = req.environ.get('ORIG_PATH_INFO')
+        else:
+            req_path = get_valid_utf8_str(req.path)
+            the_request = quote(unquote(req_path), QUOTE_SAFE)
+            if req.query_string:
+                the_request = the_request + '?' + req.query_string
         logged_headers = None
         if self.log_hdrs:
             if self.log_hdrs_only:
@@ -216,7 +219,7 @@ class ProxyLoggingMiddleware(object):
         logInfo.bytesSent = bytes_sent
         logInfo.etag = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.headers.get('etag', None))
         logInfo.transId = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.trans_id'))
-        logInfo.reqTime = duration_time_str
+        logInfo.reqTime = float(duration_time_str)
         logInfo.source = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.source'))
         logInfo.serverName = req.environ.get('SERVER_NAME', None)
         serverPortStr = req.environ.get('SERVER_PORT', None)

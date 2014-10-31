@@ -11,7 +11,7 @@ def path_lower(matcher):
     group = matcher.groupdict()
     entire = matcher.group(0)
     for key, value in group.items():
-        if value:
+        if value and key == 'Account' and not value.startswith('AUTH_'):
             entire = entire.replace(value, lower(value))
     return entire
 
