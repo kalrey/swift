@@ -901,7 +901,9 @@ class Controller(object):
         """
         st = self.server_type.lower()
 
-        x_remove = 'x-remove-%s-meta-' % st
+        #x_remove = 'x-remove-%s-meta-' % st
+        #老代码只允许用户meta，新的代码允许移除系统meta，允许进行高级特性的开关
+        x_remove = 'x-remove-%s-' % st
         dst_headers.update((k.lower().replace('-remove', '', 1), '')
                            for k in src_headers
                            if k.lower().startswith(x_remove) or
