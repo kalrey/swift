@@ -442,7 +442,11 @@ class ContainerController(object):
             return HTTPPreconditionFailed(body='Bad delimiter')
         marker = get_param(req, 'marker', '')
         end_marker = get_param(req, 'end_marker')
+        delimiter_only = get_param(req, 'delimiter_only')
+        if delimiter_only:
+            delimiter_only = delimiter_only.lower() == 'true'
         limit = constraints.CONTAINER_LISTING_LIMIT
+
         given_limit = get_param(req, 'limit')
         if given_limit and given_limit.isdigit():
             limit = int(given_limit)
@@ -463,7 +467,8 @@ class ContainerController(object):
             return HTTPNotFound(request=req, headers=resp_headers)
         container_list = broker.list_objects_iter(
             limit, marker, end_marker, prefix, delimiter, path,
-            storage_policy_index=info['storage_policy_index'])
+            storage_policy_index=info['storage_policy_index'],
+            delimiter_only=delimiter_only)
         return self.create_listing(req, out_content_type, info, resp_headers,
                                    broker.metadata, container_list, container)
 

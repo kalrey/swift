@@ -571,7 +571,7 @@ class ContainerBroker(DatabaseBroker):
             conn.commit()
 
     def list_objects_iter(self, limit, marker, end_marker, prefix, delimiter,
-                          path=None, storage_policy_index=0):
+                          path=None, storage_policy_index=0, delimiter_only=False):
         """
         Get a list of objects sorted by name starting at marker onward, up
         to limit entries.  Entries will begin with the prefix and will not
@@ -686,6 +686,8 @@ class ContainerBroker(DatabaseBroker):
                             results.append([dir_name, '0', 0, None, ''])
                         curs.close()
                         break
+                    if delimiter_only:
+                        continue
                     results.append(row)
                 if not rowcount:
                     break
