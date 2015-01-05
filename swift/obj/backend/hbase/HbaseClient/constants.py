@@ -7,7 +7,6 @@
 #
 
 from thrift.Thrift import TType, TMessageType, TException, TApplicationException
-from ttypes import *
 
 
 METEOR_HABASE_THRIFT_ATTRIBUTES_KEY_IS_HASH = "hbase.key.hash";

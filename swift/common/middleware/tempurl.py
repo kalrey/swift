@@ -359,9 +359,10 @@ class TempURL(object):
         :param env: The WSGI environment for the request.
         :returns: Account str or None.
         """
+        path_info = env.get('ORIG_PATH_INFO') if env.get('ORIG_PATH_INFO') else env.get('PATH_INFO')
         if env['REQUEST_METHOD'] in self.methods:
             try:
-                ver, acc, cont, obj = split_path(env['PATH_INFO'], 4, 4, True)
+                ver, acc, cont, obj = split_path(path_info, 4, 4, True)
             except ValueError:
                 return None
             if ver == 'v1' and obj.strip('/'):
@@ -432,8 +433,9 @@ class TempURL(object):
         """
         if not request_method:
             request_method = env['REQUEST_METHOD']
+        path_info = env.get('ORIG_PATH_INFO') if env.get('ORIG_PATH_INFO') else env.get('PATH_INFO')
         return [get_hmac(
-            request_method, env['PATH_INFO'], expires, key) for key in keys]
+            request_method, path_info, expires, key) for key in keys]
 
     def _invalid(self, env, start_response):
         """

@@ -15,8 +15,8 @@ from thrift.transport import TSocket
 from thrift.transport import THttpClient
 from thrift.protocol import TBinaryProtocol
 
-from Hbase import Hbase
-from Hbase.ttypes import *
+from swift.obj.backend.hbase.HbaseClient.Hbase.ttypes import *
+from swift.obj.backend.hbase.HbaseClient import Hbase
 
 if len(sys.argv) <= 1 or sys.argv[1] == '--help':
   print ''

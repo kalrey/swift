@@ -517,6 +517,7 @@ class ObjectController(object):
                     pass
                 response.headers['X-Timestamp'] = file_x_ts.normal
                 response.headers['X-Backend-Timestamp'] = file_x_ts.internal
+                response.headers['X-Content-Length'] = obj_size
                 resp = request.get_response(response)
         except (DiskFileNotExist, DiskFileQuarantined) as e:
             headers = {}

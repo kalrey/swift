@@ -601,6 +601,7 @@ class GetOrHeadHandler(object):
         self.used_nodes = []
         self.used_source_etag = ''
 
+
         # stuff from request
         self.req_method = req.method
         self.req_path = req.path

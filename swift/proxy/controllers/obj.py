@@ -214,6 +214,10 @@ class ObjectController(Controller):
         if ';' in resp.headers.get('content-type', ''):
             resp.content_type = clean_content_type(
                 resp.headers['content-type'])
+        #add by kalrey
+        if resp.headers.get('x-content-length', None):
+            req.environ['swift.object_length'] = resp.headers.get('x-content-length')
+            resp.headers.pop('x-content-length')
         return resp
 
     @public

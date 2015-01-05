@@ -103,6 +103,8 @@ class SwiftLog(object):
         self.reqTime = None
         self.source = None
 
+        self.byteorgSend = None
+
         self.serverName = None
         self.serverPort = None
         self.remotePort = None
@@ -217,6 +219,9 @@ class ProxyLoggingMiddleware(object):
         logInfo.authToken = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(self.obscure_sensitive(req.headers.get('x-auth-token')))
         logInfo.bytesRecv = bytes_received
         logInfo.bytesSent = bytes_sent
+        logInfo.byteorgSend = bytes_sent
+        if status_int == 304 and logInfo.method == 'GET' and bytes_sent == 0:
+            logInfo.bytesSent = int(req.environ.get('swift.object_length', bytes_sent))
         logInfo.etag = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.headers.get('etag', None))
         logInfo.transId = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.trans_id'))
         logInfo.reqTime = float(duration_time_str)

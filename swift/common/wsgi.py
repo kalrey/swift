@@ -23,6 +23,7 @@ import mimetools
 from swift import gettext_ as _
 from StringIO import StringIO
 
+import traceback
 import eventlet
 import eventlet.debug
 from eventlet import greenio, GreenPool, sleep, wsgi, listen
@@ -489,6 +490,7 @@ def _initrp(conf_path, app_section, *args, **kwargs):
     try:
         conf = appconfig(conf_path, name=app_section)
     except Exception as e:
+        print traceback.format_exc()
         raise ConfigFileError("Error trying to load config from %s: %s" %
                               (conf_path, e))
 

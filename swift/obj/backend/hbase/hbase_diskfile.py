@@ -2,11 +2,12 @@ __author__ = 'kalrey'
 
 import cPickle as pickle
 import cStringIO
+import hashlib
 from contextlib import contextmanager
 from swift.common.exceptions import DiskFileQuarantined, DiskFileNotExist, \
-    DiskFileCollision, DiskFileNoSpace, DiskFileDeviceUnavailable, \
-    DiskFileDeleted, DiskFileError, DiskFileNotOpen, PathNotDir, \
-    ReplicationLockTimeout, DiskFileExpired
+    DiskFileCollision, DiskFileDeleted, DiskFileNotOpen
+
+from swift.common.utils import Timestamp
 
 from thrift.transport import TTransport
 from thrift.transport import TSocket
@@ -14,59 +15,73 @@ from thrift.transport import THttpClient
 from thrift.protocol import TBinaryProtocol
 from thrift.Thrift import TException, TApplicationException
 
-from swift.obj.backend.HbaseClient.Hbase import Client as HbaseClient
-from swift.obj.backend.HbaseClient.ttypes import Mutation
-from swift.obj.backend.HbaseClient.constants import *
+from swift.obj.backend.hbase.HbaseClient.Hbase import Client as HbaseClient
+from swift.obj.backend.hbase.HbaseClient.ttypes import Mutation
+from swift.obj.backend.hbase.HbaseClient.constants import *
 
+PICKLE_PROTOCOL = 2
 DEFUALT_HBASE_HOST = '127.0.0.1'
 DEFAULT_HBASE_PORT = 10000
 
-HBASE_COLUMN_VALUE = 'object:data'
-HBASE_COLUMN_META = 'object:meta'
+HBASE_COLUMN_VALUE = 'r:d'
+HBASE_COLUMN_META = 'r:meta'
+HABSE_COLUMN_ASYNCPENDING = 'r:updater'
+HBASE_COLUMN_ORIGINKEY = 'm:origin_key'
 
-class HbaseBackend(Object):
+class HbaseBackend(object):
     """
     A backend with hbase.
     """
 
-    def __init__(self, conf):
+    def __init__(self, conf, logger=None):
+        self.logger = logger
         hbase_addrs = conf.get('hbase_addrs', None)
         if hbase_addrs:
             if ':' in hbase_addrs:
                 host, port = hbase_addrs.split(':')
+                port = int(port)
             else:
                 host = hbase_addrs
                 port = DEFAULT_HBASE_PORT
         else:
             host = DEFUALT_HBASE_HOST
             port = DEFAULT_HBASE_PORT
-
-        framed = conf.get('hbase_framed', 0)
+        self.logger.info('host %s port %s' % (host, port))
+        framed = conf.get('hbase_framed', 'false')
+        framed = framed.lower() == 'true'
         socket = TSocket.TSocket(host, port)
         if framed:
             self._transport = TTransport.TFramedTransport(socket)
         else:
             self._transport = TTransport.TBufferedTransport(socket)
-        self._protocol = TBinaryProtocol.TBinaryProtocol(transport)
-        self._hbaseClient = HbaseClient(protocol)
         self._transport.open()
+        self._protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
+        self._hbaseClient = HbaseClient(self._protocol)
+
         self._value_column_name = conf.get('hbase_column_value_name', HBASE_COLUMN_VALUE)
         self._meta_column_name = conf.get('hbase_column_meta_name', HBASE_COLUMN_META)
+        self._asyncpending_column_name = conf.get('hbase_column_asyncpending_name', HABSE_COLUMN_ASYNCPENDING)
+        self._originkey_column_name = conf.get('hbase_column_originkey_name', HBASE_COLUMN_ORIGINKEY)
 
     def __del__(self):
         pass
 
     def get_object(self, table, name):
-        row_result = self._hbaseClient.getRow(tableName=table,
-                                              row=name,
-                                              attributes={METEOR_HABASE_THRIFT_ATTRIBUTES_KEY_IS_HASH: 'true'})
-        if row_result is None:
+        try:
+            row_result = self._hbaseClient.getRow(tableName=table,
+                                                  row=name,
+                                                  attributes={METEOR_HABASE_THRIFT_ATTRIBUTES_KEY_IS_HASH: 'true'})
+        except TException,e:
+            self.logger.error()
+        if row_result is None or len(row_result) == 0:
             data, metadata = None, None
         else:
-            data = row_result.columns.get(self._value_column_name)
+            data = row_result[0].columns.get(self._value_column_name)
             data = cStringIO.StringIO(data.value) if data else None
-            metadata = row_result.columns.get(self._meta_column_name)
+            metadata = row_result[0].columns.get(self._meta_column_name)
             metadata = pickle.loads(metadata.value) if metadata else ''
+            origin_key = row_result[0].columns.get(self._originkey_column_name)
+            metadata['name'] = origin_key
         return data, metadata
 
     def read_metadata(self, table, name):
@@ -96,6 +111,17 @@ class HbaseBackend(Object):
                                     mutations=mutations,
                                     attributes={METEOR_HABASE_THRIFT_ATTRIBUTES_KEY_IS_HASH: 'true'})
 
+    def async_updater(self, table, name, update_data, timestamp):
+        mutations = list()
+        if update_data:
+            async_pending = pickle.dumps(update_data, PICKLE_PROTOCOL)
+            mutations.append(Mutation(column=self._asyncpending_column_name, value=async_pending))
+        self._hbaseClient.mutateRowTs(tableName=table,
+                                      row=name,
+                                      mutations=mutations,
+                                      timestamp=timestamp,
+                                      attributes={METEOR_HABASE_THRIFT_ATTRIBUTES_KEY_IS_HASH: 'true'})
+
     def write_metadata(self, table, name, metadata):
         mutations = list()
         if metadata:
@@ -106,12 +132,13 @@ class HbaseBackend(Object):
                                     mutations=mutations,
                                     attributes={METEOR_HABASE_THRIFT_ATTRIBUTES_KEY_IS_HASH: 'true'})
 
-
-    def del_object(self, name):
+    def del_object(self, table, name):
         mutations = list()
         mutation = Mutation(isDelete=True, column=self._value_column_name, value='')
         mutations.append(mutation)
         mutation = Mutation(isDelete=True, column=self._meta_column_name, value='')
+        mutations.append(mutation)
+        mutation = Mutation(isDelete=True, column=self._asyncpending_column_name, value='')
         mutations.append(mutation)
         self._hbaseClient.mutateRow(tableName=table,
                                     row=name,
@@ -119,7 +146,7 @@ class HbaseBackend(Object):
                                     attributes={METEOR_HABASE_THRIFT_ATTRIBUTES_KEY_IS_HASH: 'true'})
 
     def get_diskfile(self, table, account, container, obj, **kwargs):
-        return DiskFile(self, self._habseClient, table, account, container, obj)
+        return DiskFile(self, table, account, container, obj)
 
 
 
@@ -162,7 +189,8 @@ class DiskFileWriter(object):
         :param metadata: dictionary of metadata to be written
         :param extension: extension to be used when making the file
         """
-        self._hbase_backend.put_object(self._table, self._name, self._fp, metadata)
+        self._fp.seek(0)
+        self._hbase_backend.put_object(self._table, self._name, self._fp.read(), metadata)
 
 
 class DiskFileReader(object):
@@ -320,7 +348,8 @@ class DiskFile(object):
         fp, self._metadata = self._filesystem.get_object(self._table, self._name)
         if fp is None:
             raise DiskFileDeleted()
-        self._fp = self._verify_data_file(fp)
+        self._fp = fp
+#        self._fp = self._verify_data_file(fp)
         self._metadata = self._metadata or {}
         return self
 
@@ -332,6 +361,20 @@ class DiskFile(object):
     def __exit__(self, t, v, tb):
         if self._fp is not None:
             self._fp = None
+
+    def _quarantine(self, name, msg):
+        """
+        Quarantine a file; responsible for incrementing the associated logger's
+        count of quarantines.
+
+        :param data_file: full path of data file to quarantine
+        :param msg: reason for quarantining to be included in the exception
+        :returns: DiskFileQuarantined exception object
+        """
+        self._logger.warn("Quarantined object %s: %s" % (
+            data_file, msg))
+        self._logger.increment('quarantines')
+        return DiskFileQuarantined(msg)
 
     def _verify_data_file(self, fp):
         """
@@ -460,6 +503,6 @@ class DiskFile(object):
 
         :param timestamp: timestamp to compare with each file
         """
-        fp, md = self._filesystem.get_object(self._name)
-        if md['X-Timestamp'] < Timestamp(timestamp):
-            self._filesystem.del_object(self._name)
+        fp, md = self._filesystem.get_object(self._table, self._name)
+        if fp and md and md['X-Timestamp'] < Timestamp(timestamp):
+            self._filesystem.del_object(self._table, self._name)

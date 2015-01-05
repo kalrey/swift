@@ -41,7 +41,7 @@ class ObjectController(server.ObjectController):
         """
         self.conf = conf
 
-        self._hbase_backend = HbaseBackend(self.conf)
+        self._hbase_backend = HbaseBackend(self.conf, self.logger)
 
     def get_diskfile(self, table, partition, account, container, obj,
                      **kwargs):
@@ -69,7 +69,7 @@ class ObjectController(server.ObjectController):
         :param contdevice: device name that the container is on
         :param headers_out: dictionary of headers to send in the container
                             request
-        :param objdevice: device name that the object is in
+        :param objdevice: table name that the object is in
         :param policy_idx: the associated storage policy index
         """
         headers_out['user-agent'] = 'obj-server %s' % os.getpid()
@@ -97,6 +97,10 @@ class ObjectController(server.ObjectController):
                     '%(ip)s:%(port)s/%(dev)s'),
                     {'ip': ip, 'port': port, 'dev': contdevice})
         # FIXME: For now don't handle async updates
+        data = {'op': op, 'account': account, 'container': container,
+                'obj': obj, 'headers': headers_out}
+        timestamp = headers_out['x-timestamp']
+        self._hbase_backend.async_updater(objdevice, full_path, data, timestamp)
 
     def REPLICATE(self, request):
         """
