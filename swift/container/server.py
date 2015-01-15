@@ -437,6 +437,7 @@ class ContainerController(object):
         path = get_param(req, 'path')
         prefix = get_param(req, 'prefix')
         delimiter = get_param(req, 'delimiter')
+
         if delimiter and (len(delimiter) > 1 or ord(delimiter) > 254):
             # delimiters can be made more flexible later
             return HTTPPreconditionFailed(body='Bad delimiter')
@@ -465,10 +466,22 @@ class ContainerController(object):
         resp_headers = gen_resp_headers(info, is_deleted=is_deleted)
         if is_deleted:
             return HTTPNotFound(request=req, headers=resp_headers)
-        container_list = broker.list_objects_iter(
-            limit, marker, end_marker, prefix, delimiter, path,
-            storage_policy_index=info['storage_policy_index'],
-            delimiter_only=delimiter_only)
+
+        counter = get_param(req, 'count')
+        if counter and counter.lower() == 'true':
+            count = broker.count_objects(marker, end_marker, prefix,
+                                         delimiter, path,
+                                         storage_policy_index=info['storage_policy_index'],
+                                         delimiter_only=delimiter_only)
+            ret = Response(request=req, headers=resp_headers,
+                           content_type=out_content_type, charset='utf-8')
+            ret.body = '%d\n' % count
+            return ret
+        else:
+            container_list = broker.list_objects_iter(
+                limit, marker, end_marker, prefix, delimiter, path,
+                storage_policy_index=info['storage_policy_index'],
+                delimiter_only=delimiter_only)
         return self.create_listing(req, out_content_type, info, resp_headers,
                                    broker.metadata, container_list, container)
 

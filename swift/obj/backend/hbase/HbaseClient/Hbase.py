@@ -613,11 +613,12 @@ class Iface:
 
 
 class Client(Iface):
-  def __init__(self, iprot, oprot=None):
+  def __init__(self, iprot, oprot=None, logger=None):
     self._iprot = self._oprot = iprot
     if oprot is not None:
       self._oprot = oprot
     self._seqid = 0
+    self._logger = logger
 
   def enableTable(self, tableName):
     """
@@ -1130,9 +1131,11 @@ class Client(Iface):
       x.read(self._iprot)
       self._iprot.readMessageEnd()
       raise x
+
     result = getRow_result()
     result.read(self._iprot)
     self._iprot.readMessageEnd()
+    self._logger.info('mtype %s result.success %s result.io %s' % (mtype, result.success, result.io))
     if result.success is not None:
       return result.success
     if result.io is not None:

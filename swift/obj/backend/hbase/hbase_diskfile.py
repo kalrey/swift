@@ -56,7 +56,7 @@ class HbaseBackend(object):
             self._transport = TTransport.TBufferedTransport(socket)
         self._transport.open()
         self._protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
-        self._hbaseClient = HbaseClient(self._protocol)
+        self._hbaseClient = HbaseClient(self._protocol, logger=self.logger)
 
         self._value_column_name = conf.get('hbase_column_value_name', HBASE_COLUMN_VALUE)
         self._meta_column_name = conf.get('hbase_column_meta_name', HBASE_COLUMN_META)
@@ -67,15 +67,16 @@ class HbaseBackend(object):
         pass
 
     def get_object(self, table, name):
+        data, metadata = None, None
         try:
             row_result = self._hbaseClient.getRow(tableName=table,
                                                   row=name,
                                                   attributes={METEOR_HABASE_THRIFT_ATTRIBUTES_KEY_IS_HASH: 'true'})
-        except TException,e:
-            self.logger.error()
-        if row_result is None or len(row_result) == 0:
-            data, metadata = None, None
-        else:
+        except TException, e:
+            self.logger.error(e)
+            raise e
+            return data, metadata
+        if row_result and len(row_result):
             data = row_result[0].columns.get(self._value_column_name)
             data = cStringIO.StringIO(data.value) if data else None
             metadata = row_result[0].columns.get(self._meta_column_name)

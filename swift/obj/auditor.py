@@ -16,6 +16,7 @@
 import os
 import sys
 import time
+import datetime
 import signal
 from swift import gettext_ as _
 from contextlib import closing
@@ -41,6 +42,10 @@ class AuditorWorker(object):
         self.max_files_per_second = float(conf.get('files_per_second', 20))
         self.max_bytes_per_second = float(conf.get('bytes_per_second',
                                                    10000000))
+
+        self.start_time = conf.get('start_time', '01:00')
+        self.end_time = conf.get('end_time', '06:30')
+
         self.auditor_type = 'ALL'
         self.zero_byte_only_at_fps = zero_byte_only_at_fps
         if self.zero_byte_only_at_fps:
@@ -83,14 +88,32 @@ class AuditorWorker(object):
         time_auditing = 0
         all_locs = self.diskfile_mgr.object_audit_location_generator(
             device_dirs=device_dirs)
+        auditor_per_count = 0
         for location in all_locs:
-            self.logger.info(_('Object auditing: %s' % location))
             loop_time = time.time()
+            curtime = datetime.datetime.fromtimestamp(loop_time)
+            start = datetime.datetime.strptime('%s %s' % (curtime.date(), self.start_time), '%Y-%m-%d %H:%M')
+            end = datetime.datetime.strptime('%s %s' % (curtime.date(), self.end_time), '%Y-%m-%d %H:%M')
+            if curtime < start:
+                self.logger.info(_('Object auditing: sleep %dseconds... until %s'
+                                   % ((start - curtime).seconds, start)))
+                time.sleep((start - curtime).seconds)
+                self.logger.info(_('Object auditing: wake up!'))
+            elif curtime > end:
+                self.logger.info(_('Object auditing: last audit count %d,sleep %dseconds... until %s'
+                                   % (auditor_per_count,
+                                      (start + datetime.timedelta(days=1) - curtime).seconds,
+                                      start + datetime.timedelta(days=1))))
+                auditor_per_count = 0
+                time.sleep((start + datetime.timedelta(days=1) - curtime).seconds)
+                self.logger.info(_('Object auditing: wake up!'))
+            self.logger.info(_('Object auditing: %s' % location))
             self.failsafe_object_audit(location)
             self.logger.timing_since('timing', loop_time)
             self.files_running_time = ratelimit_sleep(
                 self.files_running_time, self.max_files_per_second)
             self.total_files_processed += 1
+            auditor_per_count += 1
             now = time.time()
             if now - reported >= self.log_time:
                 self.logger.info(_(
@@ -221,6 +244,7 @@ class ObjectAuditor(Daemon):
     """Audit objects."""
 
     def __init__(self, conf, **options):
+        os.environ['TZ'] = 'Asia/Chongqing'
         self.conf = conf
         self.logger = get_logger(conf, log_route='object-auditor')
         self.devices = conf.get('devices', '/srv/node')

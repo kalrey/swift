@@ -349,4 +349,28 @@ AuditorWorker则执行具体的校验逻辑，核心入口为auditor_all_objects
             renamer(from_dir, to_dir)
         return to_dir
 
+此处可以看invalidate_hash只是把对应的后缀对应项设置为None
 
+    def invalidate_hash(suffix_dir):
+    """
+    Invalidates the hash for a suffix_dir in the partition's hashes file.
+
+    :param suffix_dir: absolute path to suffix dir whose hash needs
+                       invalidating
+    """
+
+    suffix = basename(suffix_dir)
+    partition_dir = dirname(suffix_dir)
+    hashes_file = join(partition_dir, HASH_FILE)
+    with lock_path(partition_dir):
+        try:
+            with open(hashes_file, 'rb') as fp:
+                hashes = pickle.load(fp)
+            if suffix in hashes and not hashes[suffix]:
+                #在pkl文件中找到后缀，同时后缀对应数值为None，那么就不需要做任何操作
+                return
+        except Exception:
+            return
+        #将对应后缀的数值改成None，写入pkl中更新
+        hashes[suffix] = None
+        write_pickle(hashes, hashes_file, partition_dir, PICKLE_PROTOCOL)

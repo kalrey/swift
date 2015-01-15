@@ -570,6 +570,124 @@ class ContainerBroker(DatabaseBroker):
             ''', (put_timestamp, delete_timestamp, object_count, bytes_used))
             conn.commit()
 
+    def count_objects(self, marker, end_marker, prefix, delimiter, path=None,
+                      storage_policy_index=0, delimiter_only=False):
+        delim_force_gte = False
+        (marker, end_marker, prefix, delimiter, path) = utf8encode(
+            marker, end_marker, prefix, delimiter, path)
+        self._commit_puts_stale_ok()
+        if path is not None:
+            prefix = path
+            if path:
+                prefix = path = path.rstrip('/') + '/'
+            delimiter = '/'
+        elif delimiter and not prefix:
+            prefix = ''
+        orig_marker = marker
+        once_limit = 100000
+        with self.get() as conn:
+            total_count = 0
+            while True:
+                query = '''SELECT name, created_at, size, content_type, etag
+                           FROM object WHERE'''
+                query_args = []
+                if end_marker:
+                    query += ' name < ? AND'
+                    query_args.append(end_marker)
+                if delim_force_gte:
+                    query += ' name >= ? AND'
+                    query_args.append(marker)
+                    # Always set back to False
+                    delim_force_gte = False
+                elif marker and marker >= prefix:
+                    query += ' name > ? AND'
+                    query_args.append(marker)
+                elif prefix:
+                    query += ' name >= ? AND'
+                    query_args.append(prefix)
+                if self.get_db_version(conn) < 1:
+                    query += ' +deleted = 0'
+                else:
+                    query += ' deleted = 0'
+                orig_tail_query = '''
+                    ORDER BY name LIMIT ?
+                '''
+                orig_tail_args = [once_limit]
+                # storage policy filter
+                policy_tail_query = '''
+                    AND storage_policy_index = ?
+                ''' + orig_tail_query
+                policy_tail_args = [storage_policy_index] + orig_tail_args
+                tail_query, tail_args = \
+                    policy_tail_query, policy_tail_args
+                try:
+                    curs = conn.execute(query + tail_query,
+                                        tuple(query_args + tail_args))
+                except sqlite3.OperationalError as err:
+                    if 'no such column: storage_policy_index' not in str(err):
+                        raise
+                    tail_query, tail_args = \
+                        orig_tail_query, orig_tail_args
+                    curs = conn.execute(query + tail_query,
+                                        tuple(query_args + tail_args))
+                curs.row_factory = None
+
+                if prefix is None:
+                    # A delimiter without a specified prefix is ignored
+                    rows = curs.fetchall()
+                    print 'rows count %d' % len(rows)
+                    if len(rows) == 0:
+                        return total_count
+                    total_count += len(rows)
+                    marker = rows[-1][0]
+                    continue
+                if not delimiter:
+                    rows = curs.fetchall()
+                    if len(rows) == 0:
+                        return total_count
+                    if not prefix:
+                        # It is possible to have a delimiter but no prefix
+                        # specified. As above, the prefix will be set to the
+                        # empty string, so avoid performing the extra work to
+                        # check against an empty prefix.
+                        total_count += len(rows)
+                    else:
+                        total_count += len([r for r in rows if r[0].startswith(prefix)])
+                    marker = rows[-1][0]
+                    continue
+                # We have a delimiter and a prefix (possibly empty string) to
+                # handle
+                rowcount = 0
+                for row in curs:
+                    rowcount += 1
+                    marker = name = row[0]
+                    if not name.startswith(prefix):
+                        curs.close()
+                        return total_count
+                    end = name.find(delimiter, len(prefix))
+                    if path is not None:
+                        if name == path:
+                            continue
+                        if end >= 0 and len(name) > end + len(delimiter):
+                            marker = name[:end] + chr(ord(delimiter) + 1)
+                            curs.close()
+                            break
+                    elif end > 0:
+                        marker = name[:end] + chr(ord(delimiter) + 1)
+                        # we want result to be inclusinve of delim+1
+                        delim_force_gte = True
+                        dir_name = name[:end + 1]
+                        if dir_name != orig_marker:
+                            total_count += 1
+                        curs.close()
+                        break
+                    if delimiter_only:
+                        continue
+                    total_count += 1
+                if not rowcount:
+                    break
+            return total_count
+
     def list_objects_iter(self, limit, marker, end_marker, prefix, delimiter,
                           path=None, storage_policy_index=0, delimiter_only=False):
         """
