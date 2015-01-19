@@ -1,5 +1,5 @@
 swift (2.0.0)
-
+    
     * Storage policies
 
       Storage policies allow deployers to configure multiple object rings
