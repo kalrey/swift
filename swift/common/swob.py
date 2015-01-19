@@ -1113,11 +1113,29 @@ class Response(object):
 
     def _response_iter(self, app_iter, body):
         if self.conditional_response and self.request:
+            last_modify = match = False
             if self.etag and self.request.if_none_match and \
                     self.etag in self.request.if_none_match:
+                match = True
+
+            if self.last_modified and self.request.if_modified_since \
+               and self.last_modified <= self.request.if_modified_since:
+                last_modify = True
+
+            if self.request.if_none_match and self.request.if_modified_since:
+                if match and last_modify:
+                    self.status = 304
+                    self.content_length = 0
+                    return ['']
+            elif match:
                 self.status = 304
                 self.content_length = 0
                 return ['']
+            elif last_modify:
+                self.status = 304
+                self.content_length = 0
+                return ['']
+
 
             if self.etag and self.request.if_match and \
                self.etag not in self.request.if_match:
@@ -1135,11 +1153,6 @@ class Response(object):
                 self.content_length = 0
                 return ['']
 
-            if self.last_modified and self.request.if_modified_since \
-               and self.last_modified <= self.request.if_modified_since:
-                self.status = 304
-                self.content_length = 0
-                return ['']
 
             if self.last_modified and self.request.if_unmodified_since \
                and self.last_modified > self.request.if_unmodified_since:
