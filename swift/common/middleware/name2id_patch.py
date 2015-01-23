@@ -105,7 +105,7 @@ class Name2Id(object):
 
 
     def __call__(self, environ, start_response):
-        environ['ORIG_PATH_INFO'] = environ['PATH_INFO']
+        environ['swift.name2id.ORIG_PATH_INFO'] = environ['PATH_INFO']
         if environ['PATH_INFO'].startswith('/v1/AUTH_'):
             return self.app(environ, start_response)
         else:

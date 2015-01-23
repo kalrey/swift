@@ -76,7 +76,8 @@ class ContainerController(object):
 
     # Ensure these are all lowercase
     save_headers = ['x-container-read', 'x-container-write',
-                    'x-container-sync-key', 'x-container-sync-to']
+                    'x-container-sync-key', 'x-container-sync-to',
+                    'x-container-log-prefix', 'x-container-log-target']
 
     def __init__(self, conf, logger=None):
         os.environ['TZ'] = 'Asia/Chongqing'
@@ -331,6 +332,8 @@ class ContainerController(object):
                 self.realms_conf)
             if err:
                 return HTTPBadRequest(err)
+
+
         if self.mount_check and not check_mount(self.root, drive):
             return HTTPInsufficientStorage(drive=drive, request=req)
         requested_policy_index = self.get_and_validate_policy_index(req)

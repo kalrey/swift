@@ -200,6 +200,11 @@ class ObjectController(Controller):
         policy_index = req.headers.get(POLICY_INDEX,
                                        container_info['storage_policy'])
         obj_ring = self.app.get_object_ring(policy_index)
+
+        #add by kalrey
+        req.environ['swift.log_prefix'] = container_info['log_prefix']
+        req.environ['swift.log_target'] = container_info['log_target']
+        #end
         req.headers[POLICY_INDEX] = policy_index
         if 'swift.authorize' in req.environ:
             aresp = req.environ['swift.authorize'](req)
@@ -277,6 +282,12 @@ class ObjectController(Controller):
             container_partition = container_info['partition']
             containers = container_info['nodes']
             req.acl = container_info['write_acl']
+
+            #add by kalrey
+            req.environ['swift.log_prefix'] = container_info['log_prefix']
+            req.environ['swift.log_target'] = container_info['log_target']
+            #end
+
             if 'swift.authorize' in req.environ:
                 aresp = req.environ['swift.authorize'](req)
                 if aresp:
@@ -472,6 +483,12 @@ class ObjectController(Controller):
         req.acl = container_info['write_acl']
         req.environ['swift_sync_key'] = container_info['sync_key']
         object_versions = container_info['versions']
+
+        #add by kalrey
+        req.environ['swift.log_prefix'] = container_info['log_prefix']
+        req.environ['swift.log_target'] = container_info['log_target']
+        #end
+
         if 'swift.authorize' in req.environ:
             aresp = req.environ['swift.authorize'](req)
             if aresp:
@@ -791,6 +808,12 @@ class ObjectController(Controller):
         req.acl = container_info['write_acl']
         req.environ['swift_sync_key'] = container_info['sync_key']
         object_versions = container_info['versions']
+
+        #add by kalrey
+        req.environ['swift.log_prefix'] = container_info['log_prefix']
+        req.environ['swift.log_target'] = container_info['log_target']
+        #end
+
         if object_versions:
             # this is a version manifest and needs to be handled differently
             object_versions = unquote(object_versions)

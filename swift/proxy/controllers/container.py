@@ -35,7 +35,8 @@ class ContainerController(Controller):
     # Ensure these are all lowercase
     pass_through_headers = ['x-container-read', 'x-container-write',
                             'x-container-sync-key', 'x-container-sync-to',
-                            'x-versions-location']
+                            'x-versions-location', 'x-container-log-prefix',
+                            'x-container-log-target']
 
     def __init__(self, app, account_name, container_name, **kwargs):
         Controller.__init__(self, app)
@@ -90,6 +91,11 @@ class ContainerController(Controller):
         resp = self.GETorHEAD_base(
             req, _('Container'), self.app.container_ring, part,
             req.swift_entity_path)
+        #add by kalrey
+        if resp.headers.get('x-container-log-target'):
+            req.environ['swift.container_log_prefix'] = resp.headers.get('x-container-log-prefix')
+            req.environ['swift.container_log_target'] = resp.headers.get('x-container-log-target')
+
         if 'swift.authorize' in req.environ:
             req.acl = resp.headers.get('x-container-read')
             aresp = req.environ['swift.authorize'](req)

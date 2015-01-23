@@ -169,7 +169,9 @@ def headers_to_container_info(headers, status_int=HTTP_OK):
             'max_age': meta.get('access-control-max-age')
         },
         'meta': meta,
-        'sysmeta': sysmeta
+        'sysmeta': sysmeta,
+        'log_prefix': headers.get('x-container-log-prefix'),
+        'log_target': headers.get('x-container-log-target')
     }
 
 
@@ -903,7 +905,7 @@ class Controller(object):
         st = self.server_type.lower()
 
         #x_remove = 'x-remove-%s-meta-' % st
-        #老代码只允许用户meta，新的代码允许移除系统meta，允许进行高级特性的开关
+
         x_remove = 'x-remove-%s-' % st
         dst_headers.update((k.lower().replace('-remove', '', 1), '')
                            for k in src_headers

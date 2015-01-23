@@ -102,6 +102,7 @@ class SwiftLog(object):
         self.transId = None
         self.reqTime = None
         self.source = None
+        self.origPathInfo = None
 
         self.byteorgSend = None
 
@@ -117,6 +118,8 @@ class SwiftLog(object):
         self.contentType = None
         self.timestamp = None
         self.role = None
+        self.logPrefix = None
+        self.logTarget = None
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -186,8 +189,8 @@ class ProxyLoggingMiddleware(object):
         :param start_time: timestamp request started
         :param end_time: timestamp request completed
         """
-        if req.environ.get('ORIG_PATH_INFO'):
-            the_request = req.environ.get('ORIG_PATH_INFO')
+        if req.environ.get('swift.name2id.ORIG_PATH_INFO'):
+            the_request = req.environ.get('swift.name2id.ORIG_PATH_INFO')
         else:
             req_path = get_valid_utf8_str(req.path)
             the_request = quote(unquote(req_path), QUOTE_SAFE)
@@ -240,7 +243,9 @@ class ProxyLoggingMiddleware(object):
         logInfo.contentType = req.headers.get('Content-Type', None)
         logInfo.timestamp = req.headers.get('X-Timestamp', None)
         logInfo.role = req.headers.get('X-Role', None)
-
+        logInfo.logPrefix = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.log_prefix'))
+        logInfo.logTarget = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.log_target'))
+        logInfo.origPathInfo = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('ORIG_PATH_INFO'))
         self.access_logger.notice(logInfo)
 
 

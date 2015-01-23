@@ -85,6 +85,7 @@ class DomainRemapMiddleware(object):
         else:
             given_domain = env['SERVER_NAME']
         port = ''
+        env['ORIG_PATH_INFO'] = env['PATH_INFO']
         if ':' in given_domain:
             given_domain, port = given_domain.rsplit(':', 1)
         for storage_domain in self.storage_domains:
@@ -101,7 +102,7 @@ class DomainRemapMiddleware(object):
                                           body='Bad domain in host header',
                                           content_type='text/plain')
                     return resp(env, start_response)
-                path = env['PATH_INFO'].strip('/')
+                path = env['PATH_INFO'].lstrip('/')
                 new_path_parts = ['', self.path_root, account]
                 if container:
                     new_path_parts.append(container)

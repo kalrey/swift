@@ -347,9 +347,9 @@ class _StaticWebContext(WSGIContext):
             if config_true_value(env.get('HTTP_X_WEB_MODE', 'f')):
                 return HTTPNotFound()(env, start_response)
             return self.app(env, start_response)
-        if env['PATH_INFO'][-1] != '/':
+        if env['ORIG_PATH_INFO'][-1] != '/':
             resp = HTTPMovedPermanently(
-                location=(env['PATH_INFO'] + '/'))
+                location=(env['ORIG_PATH_INFO'] + '/'))
             return resp(env, start_response)
         if not self._index:
             return self._listing(env, start_response)
@@ -418,15 +418,15 @@ class _StaticWebContext(WSGIContext):
             resp = self._app_call(tmp_env)
             status_int = self._get_status_int()
             if is_success(status_int) or is_redirection(status_int):
-                if env['PATH_INFO'][-1] != '/':
+                if env['ORIG_PATH_INFO'][-1] != '/':
                     resp = HTTPMovedPermanently(
-                        location=env['PATH_INFO'] + '/')
+                        location=env['ORIG_PATH_INFO'] + '/')
                     return resp(env, start_response)
                 start_response(self._response_status, self._response_headers,
                                self._response_exc_info)
                 return resp
         if status_int == HTTP_NOT_FOUND:
-            if env['PATH_INFO'][-1] != '/':
+            if env['ORIG_PATH_INFO'][-1] != '/':
                 tmp_env = make_pre_authed_env(
                     env, 'GET', '/%s/%s/%s' % (
                         self.version, self.account, self.container),
@@ -439,7 +439,7 @@ class _StaticWebContext(WSGIContext):
                         not json.loads(body):
                     resp = HTTPNotFound()(env, self._start_response)
                     return self._error_response(resp, env, start_response)
-                resp = HTTPMovedPermanently(location=env['PATH_INFO'] + '/')
+                resp = HTTPMovedPermanently(location=env['ORIG_PATH_INFO'] + '/')
                 return resp(env, start_response)
             return self._listing(env, start_response, self.obj)
 
