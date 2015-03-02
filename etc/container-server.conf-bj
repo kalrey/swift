@@ -1,0 +1,33 @@
+[DEFAULT]
+devices = /swift/node
+mount_check = true
+bind_ip = 0.0.0.0
+bind_port = 6011
+user = root
+log_facility = LOG_LOCAL2
+workers = 16
+allowed_sync_hosts = 172.16.60.103,172.16.60.106,192.168.50.36,172.16.60.109
+db_preallocation = on
+
+[pipeline:main]
+pipeline = container-server
+
+[app:container-server]
+use = egg:swift#container
+
+[container-replicator]
+
+[container-updater]
+
+[container-auditor]
+
+[container-sync]
+# You can override the default log routing for this app here (don't
+# use set!):
+#log_name = container-sync
+#log_facility = LOG_LOCAL2
+#log_level = INFO
+# Will sync, at most, each container once per interval
+interval = 200
+# Maximum amount of time to spend syncing each container
+container_time = 200 

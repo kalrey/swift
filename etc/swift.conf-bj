@@ -5,8 +5,8 @@
 # These values should remain secret and MUST NOT change
 # once a cluster has been deployed.
 
-swift_hash_path_suffix = changeme
-swift_hash_path_prefix = changeme
+swift_hash_path_suffix = yerlak
+swift_hash_path_prefix = juno
 
 # storage policies are defined here and determine various characteristics
 # about how objects are stored and treated.  Policies are specified by name on
@@ -23,7 +23,7 @@ swift_hash_path_prefix = changeme
 # default.  It is recommended you always define a section for
 # storage-policy:0.
 [storage-policy:0]
-name = Policy-0
+name = Hulk
 default = yes
 
 # the following section would declare a policy called 'silver', the number of

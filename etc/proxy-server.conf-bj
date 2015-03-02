@@ -1,0 +1,118 @@
+[DEFAULT]
+bind_port = 8080
+user = root
+log_facility = LOG_LOCAL0
+eventlet_debug = false
+object_post_as_copy  = true
+workers = 16
+log_name = proxy-server
+log_udp_host = 127.0.0.1
+[pipeline:main]
+pipeline = healthcheck domain_remap path_lower cache proxy-logging name2id tempurl bulk signatureauth authtoken keystoneauth staticweb account-quotas container-quotas proxy-server
+
+[app:proxy-server]
+use = egg:swift#proxy
+allow_account_management = true
+log_name = proxy
+account_autocreate = true
+
+node_timeout = 10
+
+conn_timeout = 0.5
+
+post_quorum_timeout = 0.5
+
+max_containers_per_account = 0
+
+# This is a comma separated list of account hashes that ignore the
+# max_containers_per_account cap.
+# max_containers_whitelist =
+
+[filter:domain_remap]
+use = egg:swift#domain_remap
+# You can override the default log routing for this filter here:
+# set log_name = domain_remap
+# set log_facility = LOG_LOCAL0
+# set log_level = INFO
+# set log_headers = false
+# set log_address = /dev/log
+#
+storage_domain = bj.xxx.cn,bjdn.xxx.cn
+path_root = v1
+
+
+[filter:path_lower]
+use = egg:swift#path_lower
+path_root = v1
+
+
+[filter:url-reduce]
+paste.filter_factory = swift.common.middleware.url_reduce:filter_factory
+prefix = storage
+
+
+[filter:catch-errors]
+use = egg:swift#catch_errors
+log_name = catch_errors
+log_facility = LOG_LOCAL1
+log_level = INFO
+log_headers = false
+log_address = /dev/log
+
+[filter:name2id]
+paste.filter_factory = swift.common.middleware.name2id_patch:filter_factory
+auth_uri = http://192.168.51.132:35357
+admin_token=<TOKEN>
+
+[filter:keystoneauth]
+use = egg:swift#keystoneauth
+operator_roles = SwiftAccountHost, ResellerAdmin
+reseller_admin_role = ResellerAdmin
+
+[filter:authtoken]
+paste.filter_factory = keystoneclient.middleware.auth_token:filter_factory
+signing_dir = /var/swift/keystone_signing
+delay_auth_decision = true
+auth_host =192.168.51.132
+auth_port = 35357
+auth_protocol = http
+auth_uri = http://192.168.51.132:5000/
+admin_token=<TOKEN>
+cache = swift.cache
+
+[filter:healthcheck]
+use = egg:swift#healthcheck
+
+[filter:cache]
+use = egg:swift#memcache
+memcache_servers = 192.168.51.128:11211,192.168.51.129:11211,192.168.51.130:11211
+
+[filter:tempurl]
+use = egg:swift#tempurl
+# The methods allowed with Temp URLs.
+methods = GET HEAD PUT
+
+[filter:bulk]
+use = egg:swift#bulk
+# max_containers_per_extraction = 10000
+# max_failed_extractions = 1000
+# max_deletes_per_request = 10000
+# yield_frequency = 60
+
+[filter:account-quotas]
+use = egg:swift#account_quotas
+
+[filter:container-quotas]
+use = egg:swift#container_quotas
+
+[filter:proxy-logging]
+use = egg:swift#proxy_logging
+reveal_sensitive_prefix = 12
+
+[filter:signatureauth]
+paste.filter_factory=swift.common.middleware.signatureauth:filter_factory
+auth_uri = http://192.168.51.132:5000
+
+# Note: Put staticweb just after your auth filter(s) in the pipeline
+[filter:staticweb]
+use = egg:swift#staticweb

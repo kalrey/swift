@@ -1,0 +1,19 @@
+[DEFAULT]
+devices = /swift/node
+mount_check = true
+bind_port = 6012
+user = root
+log_facility = LOG_LOCAL1
+workers = 16
+ 
+[pipeline:main]
+pipeline = account-server
+
+[app:account-server]
+use = egg:swift#account
+ 
+[account-replicator]
+
+[account-auditor]
+
+[account-reaper]

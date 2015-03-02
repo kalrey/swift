@@ -44,7 +44,7 @@ use = egg:swift#domain_remap
 # set log_headers = false
 # set log_address = /dev/log
 #
-storage_domain = hf.openstorage.cn,hfcdn.openstorage.cn
+storage_domain = hf.xxx.cn,hfdn.xxx.cn
 path_root = v1
 
 
@@ -74,10 +74,10 @@ auth_host = 172.16.60.106
 auth_port = 35357
 auth_protocol = http
 auth_uri = http:// 172.16.60.106:5000/
-admin_tenant_name = swift 
-admin_user = swift 
-admin_password = iflytek 
-admin_token=6943d296e17af76e7b40
+admin_tenant_name = <TENANT> 
+admin_user = <USER> 
+admin_password = <PASSWORD> 
+admin_token=<TOKEN>
 cache = swift.cache
 
 [filter:healthcheck]

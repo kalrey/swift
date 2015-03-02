@@ -1,0 +1,23 @@
+[DEFAULT]
+devices = /swift/node
+mount_check = true
+bind_port = 6010
+user = root
+log_facility = LOG_LOCAL3
+workers = 16
+
+[pipeline:main]
+pipeline = object-server
+
+[app:object-server]
+use = egg:swift#object
+keep_cache_private = true
+threads_per_disk = 4
+
+
+[object-replicator]
+concurrency=2
+[object-updater]
+concurrency=1
+[object-auditor]
+concurrency=1
