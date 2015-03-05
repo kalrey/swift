@@ -26,6 +26,9 @@
     print signer.generate(credentials)
 """
 
+
+from swift.common import utils as swift_utils
+from swift.common.swob import Request
 import datetime
 import hashlib
 import requests
@@ -36,11 +39,8 @@ import hmac
 import base64
 import re
 import iso8601
-from urllib import unquote as _unquote
 from keystoneclient import access
-from swift.common.swob import Request
-from swift.common.request_helpers import get_param
-from swift.common.utils import cache_from_env, get_logger
+from swift.common.utils import cache_from_env
 from keystoneclient.contrib.ec2.utils import Ec2Signer as KeystoneEc2Signer
 
 CACHE_KEY_TEMPLATE = 'access_key/%s'
@@ -157,8 +157,6 @@ class Ec2Signer(object):
 
     def generate(self, credentials):
         string_to_sign = self.string_to_sign(credentials)
-        print len(string_to_sign)
-        print len(self._get_utf8_value(string_to_sign))
         h = hmac.new(self.secret_key, self._get_utf8_value(string_to_sign), hashlib.sha1)
         return base64.encodestring(h.digest()).strip()
 
@@ -176,8 +174,8 @@ class Ec2Signer(object):
 
         sign_string = '%s%s' %(sign_string, canonicalize_resource)
 
-#        if self.logger:
-#            self.logger.warn('string_to_sign %s' % sign_string)
+        if self.logger:
+            self.logger.warn('string_to_sign %s' % sign_string)
 
         return sign_string
 
@@ -210,7 +208,7 @@ class SignatureAuthMiddleware(object):
         self.app = app
         self.conf = conf
         self.identity_uri = self.conf.get('auth_uri')
-        self.logger = get_logger(conf, log_route='signature_auth')
+        self.logger = swift_utils.get_logger(conf, log_route='signature_auth')
         self.logger.info('Starting signature authenticate middleware')
         self.http_request_max_retries = self.conf.get('http_request_max_retries', 0)
         http_connect_timeout_cfg = self.conf.get('http_connect_timeout', 3000)
@@ -218,54 +216,21 @@ class SignatureAuthMiddleware(object):
                                      int(http_connect_timeout_cfg))
         self.memcache_client = None
 
-
-    def _get_url_signature(self, req):
-        access_key = get_param(req, 'CSSPAccessKeyId')
-        sign = get_param(req, 'Signature')
-        expires = get_param(req, 'Expires')
-
-        if not access_key or not sign or not expires:
-            return None
-
-        now = datetime.datetime.utcnow()
-        if not (type(eval(expires)) == int):
-            raise SignatureExpireError('Access Denied')
-
-        head_expires = datetime.datetime.utcfromtimestamp(expires)
-
-        if now > head_expires:
-            raise SignatureExpireError('Access Denied')
-
-        return {"access_key": _unquote(access_key), "signature": _unquote(sign), "expires": _unquote(expires)}
-
-    def _get_header_signature(self, req):
-        signature = req.headers.get('authorization')
+    def _validate_signature(self, env):
+        signature = env.get('HTTP_AUTHORIZATION')
         if not signature.startswith('CSSP') or ':' not in signature:
-            self.logger.info('invalid signature format %s' % signature)
-            return None
+            raise InvalidSignature('Invalid Signature Format')
 
         access_key, sign = signature[5:].split(':')
         access_key = access_key.strip()
         sign = sign.strip()
 
-        if not req.headers.get('date') or not req.headers.get('x-cssp-date'):
-            raise InvalidDateError('Invalid Header Date')
-
-        gmt_date = req.headers.get('date') or req.headers.get('x-cssp-date')
-
-        return {"access_key": access_key, "signature": sign, "expires": gmt_date}
-
-    def _validate_signature(self, env):
         req = Request(env)
 
-        signature = env.get('HTTP_AUTHORIZATION')
-        if not signature.startswith('CSSP') or ':' not in signature:
-            raise InvalidSignature('Invalid Signature Format')
-
-        if not req.headers.get('date') or not req.headers.get('x-cssp-date'):
+        if not req.headers.get('date'):
             raise InvalidDateError('Invalid Header Date')
 
-        gmt_date = req.headers.get('date') or req.headers.get('x-cssp-date')
+        gmt_date = req.headers.get('date')
 
         self.check_signature_expire(gmt_date)
 
@@ -297,7 +262,7 @@ class SignatureAuthMiddleware(object):
         if not content_type:
             content_type = ''
 
-        content_md5 = req.headers.get('content-md5') or req.headers.get('etag')
+	content_md5 = req.headers.get('content-md5') or req.headers.get('etag')
         if not content_md5:
             content_md5 = ''
 
@@ -310,7 +275,8 @@ class SignatureAuthMiddleware(object):
                        'headers': canonicalize_headers}
 
         secret_key, token_data = self._get_cache_data(access_key)
-
+	secret_key = None
+	token_data = None
         if not secret_key:
             secret_key = self._get_secret_key(access_key)
             self._set_cache_data(access_key, secret_key)
@@ -393,25 +359,19 @@ class SignatureAuthMiddleware(object):
         return response, data
 
     def check_signature_expire(self, date):
-        pattern = '(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ' \
-                  '([1-9]|([012]\d)|(3[01])) ' \
-                  '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ' \
-                  '\d{4} (([0-1]{1}[0-9]{1})|([2]{1}[0-4]{1})):' \
-                  '(([0-5]{1}[0-9]{1}|[6]{1}[0]{1})):' \
-                  '((([0-5]{1}[0-9]{1}|[6]{1}[0]{1}))) GMT'
-        m = re.match(pattern, date)
-        if not m:
-            raise SignatureExpireFormatError('Date Format Error')
+        try:
+	    gmt_format = "%a, %d %b %Y %H:%M:%S GMT"
+            expire_time = datetime.datetime.strptime(date, gmt_format)
+	except Exception:
+	    raise SignatureExpireFormatError('Date Format Error')
 
-        gmt_format = "%a, %d %b %Y %H:%M:%S GMT"
-        expire_time = datetime.datetime.strptime(date, gmt_format)
         now = datetime.datetime.utcnow()
 
         if expire_time > now and ( expire_time-now ) > datetime.timedelta(minutes=15):
-            raise SignatureExpireError('Date Expire Error > 15 min')
+            raise SignatureExpireError('Date Expire Error')
 
         if now > expire_time and (now - expire_time) > datetime.timedelta(minutes=15):
-            raise SignatureExpireError('Date Expire Error < 15 min')
+            raise SignatureExpireError('Date Expire Error')
 
     def _get_cache_data(self, access_key):
         data = self.memcache_client.get(CACHE_KEY_TEMPLATE % access_key)
@@ -470,6 +430,7 @@ class SignatureAuthMiddleware(object):
     def check_signature(self, secret_key, credentials):
         signer = Ec2Signer(secret_key, self.logger)
         signature = signer.generate(credentials)
+	self.logger.warn('check Signature, in %s, current %s' % (credentials['signature'], signature))
         if self.auth_str_equal(credentials['signature'], signature):
             return
         else:
@@ -496,7 +457,8 @@ class SignatureAuthMiddleware(object):
     def __call__(self, env, start_response):
         self.memcache_client = cache_from_env(env)
         token = env.get('HTTP_X_AUTH_TOKEN', env.get('HTTP_X_STORAGE_TOKEN', None))
-        if token:
+        signature = env.get('HTTP_AUTHORIZATION')
+        if token or not signature:
             return self.app(env, start_response)
 
         try:
@@ -516,7 +478,7 @@ class SignatureAuthMiddleware(object):
         except ServiceError as e:
             self.logger.critical('Unable to obtain admin token: %s', e)
             resp = MiniResp('Service unavailable', env)
-            start_response('503 Service Unavailable', resp.headers)
+            start_response('401 Invalid Signature', resp.headers)
             return resp.body
         except InvalidSignature as e:
             self.logger.warn('Invalid Signature: %s', e)
@@ -526,17 +488,17 @@ class SignatureAuthMiddleware(object):
         except InvalidDateError as e:
             self.logger.warn('%s', e)
             resp = MiniResp('Invalid Header Date', env)
-            start_response('400 Invalid Header Date', resp.headers)
+            start_response('401 Invalid Header Date', resp.headers)
             return resp.body
         except SignatureExpireFormatError as e:
             self.logger.warn('%s', e)
             resp = MiniResp('Invalid Header Date Format', env)
-            start_response('400 Invalid Header Date Format', resp.headers)
+            start_response('401 Invalid Header Date Format', resp.headers)
             return resp.body
         except SignatureExpireError as e:
             self.logger.info('%s', e)
-            resp = MiniResp('Access Denied', env)
-            start_response('403 Forbidden', resp.headers)
+            resp = MiniResp('Signature Expire Error', env)
+            start_response('401 Signature Expire Error', resp.headers)
             return resp.body
         except Exception as e:
             self.logger.warn('exception %s', e)
@@ -696,3 +658,4 @@ def filter_factory(global_conf, **local_conf):
     def signature_auth_filter(app):
         return SignatureAuthMiddleware(app, conf)
     return signature_auth_filter
+
