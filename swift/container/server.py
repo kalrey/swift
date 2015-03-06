@@ -77,7 +77,8 @@ class ContainerController(object):
     # Ensure these are all lowercase
     save_headers = ['x-container-read', 'x-container-write',
                     'x-container-sync-key', 'x-container-sync-to',
-                    'x-container-log-prefix', 'x-container-log-target']
+                    'x-container-log-prefix', 'x-container-log-target',
+                    'x-container-cdn']
 
     def __init__(self, conf, logger=None):
         os.environ['TZ'] = 'Asia/Chongqing'
