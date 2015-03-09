@@ -36,7 +36,7 @@ class ContainerController(Controller):
     pass_through_headers = ['x-container-read', 'x-container-write',
                             'x-container-sync-key', 'x-container-sync-to',
                             'x-versions-location', 'x-container-log-prefix',
-                            'x-container-log-target']
+                            'x-container-log-target', 'x-container-cdn']
 
     def __init__(self, app, account_name, container_name, **kwargs):
         Controller.__init__(self, app)

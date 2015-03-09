@@ -171,7 +171,7 @@ def headers_to_container_info(headers, status_int=HTTP_OK):
         'meta': meta,
         'sysmeta': sysmeta,
         'log_prefix': headers.get('x-container-log-prefix'),
-        'log_target': headers.get('x-container-log-target')
+        'log_target': headers.get('x-container-log-target'),
     }
 
 
