@@ -382,6 +382,8 @@ class _StaticWebContext(WSGIContext):
             '%s StaticWeb' % env.get('HTTP_USER_AGENT')
         tmp_env['swift.source'] = 'SW'
         resp = self._app_call(tmp_env)
+        if tmp_env.get('swift.object_length', None):
+            env['swift.object_length'] = tmp_env.get('swift.object_length', None)
         status_int = self._get_status_int()
         self._get_container_info(env)
         if is_success(status_int) or is_redirection(status_int):
