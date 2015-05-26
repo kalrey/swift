@@ -70,8 +70,8 @@ da39a3ee5e6b4b0d3255bfef95601890afd80709 and expires ends up
 1323479485. Then, for example, the website could provide a link to::
 
     https://swift-cluster.example.com/v1/AUTH_account/container/object?
-    temp_url_sig=da39a3ee5e6b4b0d3255bfef95601890afd80709&
-    temp_url_expires=1323479485
+    token=da39a3ee5e6b4b0d3255bfef95601890afd80709&
+    e=1323479485
 
 Any alteration of the resource path or query arguments would result
 in 401 Unauthorized. Similary, a PUT where GET was the allowed method
@@ -93,16 +93,16 @@ can override this with a filename query parameter. Modifying the
 above example::
 
     https://swift-cluster.example.com/v1/AUTH_account/container/object?
-    temp_url_sig=da39a3ee5e6b4b0d3255bfef95601890afd80709&
-    temp_url_expires=1323479485&filename=My+Test+File.pdf
+    token=da39a3ee5e6b4b0d3255bfef95601890afd80709&
+    e=1323479485&filename=My+Test+File.pdf
 
 If you do not want the object to be downloaded, you can cause
 "Content-Disposition: inline" to be set on the response by adding the "inline"
 parameter to the query string, like so::
 
     https://swift-cluster.example.com/v1/AUTH_account/container/object?
-    temp_url_sig=da39a3ee5e6b4b0d3255bfef95601890afd80709&
-    temp_url_expires=1323479485&inline
+    token=da39a3ee5e6b4b0d3255bfef95601890afd80709&
+    e=1323479485&inline
 
 """
 
@@ -283,7 +283,7 @@ class TempURL(object):
         if env['REQUEST_METHOD'] == 'OPTIONS':
             return self.app(env, start_response)
         info = self._get_temp_url_info(env)
-        temp_url_sig, temp_url_expires, filename, inline_disposition = info
+        temp_url_sig, temp_url_expires, filename, inline_disposition, source = info
         if temp_url_sig is None and temp_url_expires is None:
             return self.app(env, start_response)
         if not temp_url_sig or not temp_url_expires:
@@ -315,10 +315,13 @@ class TempURL(object):
         env['swift.authorize'] = lambda req: None
         env['swift.authorize_override'] = True
         env['REMOTE_USER'] = '.wsgi.tempurl'
-        qs = {'temp_url_sig': temp_url_sig,
-              'temp_url_expires': temp_url_expires}
+        qs = {'token': temp_url_sig,
+              'e': temp_url_expires}
         if filename:
             qs['filename'] = filename
+
+        if source:
+            qs['source'] = source
         env['QUERY_STRING'] = urlencode(qs)
 
         def _start_response(status, headers, exc_info=None):
@@ -379,7 +382,7 @@ class TempURL(object):
         :param env: The WSGI environment for the request.
         :returns: (sig, expires, filename, inline) as described above.
         """
-        temp_url_sig = temp_url_expires = filename = inline = None
+        temp_url_sig = temp_url_expires = filename = inline = source = None
         qs = parse_qs(env.get('QUERY_STRING', ''), keep_blank_values=True)
         # if 'temp_url_sig' in qs:
         #     temp_url_sig = qs['temp_url_sig'][0]
@@ -400,7 +403,11 @@ class TempURL(object):
             filename = qs['filename'][0]
         if 'inline' in qs:
             inline = True
-        return temp_url_sig, temp_url_expires, filename, inline
+
+        #add source filed
+        if 'source' in qs:
+            source = qs['source'][0]
+        return temp_url_sig, temp_url_expires, filename, inline, source
 
     def _get_keys(self, env, account):
         """

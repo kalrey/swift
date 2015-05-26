@@ -194,8 +194,8 @@ class ProxyLoggingMiddleware(object):
         else:
             req_path = get_valid_utf8_str(req.path)
             the_request = quote(unquote(req_path), QUOTE_SAFE)
-            if req.query_string:
-                the_request = the_request + '?' + req.query_string
+        if req.query_string:
+            the_request = the_request + '?' + req.query_string
         logged_headers = None
         if self.log_hdrs:
             if self.log_hdrs_only:
