@@ -53,6 +53,18 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPCreated, \
     HTTPConflict, HTTPServerError
 from swift.obj.diskfile import DATAFILE_SYSTEM_META, DiskFileRouter
 
+#add by byliu
+import base64
+from swift.obj.encryptor import M2CryptoDriver
+
+
+ENC_KEY_OBJ = 'X-Object-Sse-C-Enckey'
+MAIN_KEY_MD5 = 'X-Object-Sse-C-Keymd5'
+MAIN_KEY = 'X-Object-Sse-C-Key'
+MAIN_KEY_MD5_NEW = 'X-Object-Sse-C-New-Keymd5'
+MAIN_KEY_NEW = 'X-Object-Sse-C-New-Key'
+#end by byliu
+
 
 def iter_mime_headers_and_bodies(wsgi_input, mime_boundary, read_chunk_size):
     mime_documents_iter = iter_multipart_mime_documents(
@@ -119,13 +131,25 @@ class ObjectController(BaseStorageServer):
         self.keep_cache_private = \
             config_true_value(conf.get('keep_cache_private', 'false'))
 
+        #add by byliu
+        # default_allowed_headers = '''
+        #     content-disposition,
+        #     content-encoding,
+        #     x-delete-at,
+        #     x-object-manifest,
+        #     x-static-large-object,
+        # '''
+        self.crypto_driver = M2CryptoDriver(conf, None)
+
         default_allowed_headers = '''
             content-disposition,
             content-encoding,
             x-delete-at,
             x-object-manifest,
             x-static-large-object,
+            x-object-sse-c-keymd5,
         '''
+        #end by byliu
         extra_allowed_headers = [
             header.strip().lower() for header in conf.get(
                 'allowed_headers', default_allowed_headers).split(',')
@@ -528,11 +552,25 @@ class ObjectController(BaseStorageServer):
         orig_delete_at = int(orig_metadata.get('X-Delete-At') or 0)
         upload_expiration = time.time() + self.max_upload_time
         etag = md5()
+        #by byliu
+        etag_orig = md5()
+        if fsize is not None:
+            if 'OBJ_ENC_KEY' in request.headers\
+                and MAIN_KEY in request.headers\
+                and MAIN_KEY_MD5 in request.headers:
+                #get obj size after enctryption
+                fsize = (fsize // self.network_chunk_size) * \
+                        ((self.network_chunk_size // 16) * 16 + 16) + \
+                        (((fsize % self.network_chunk_size) // 16) * 16 + 16)
+        #end by byliu
         elapsed_time = 0
         try:
             with disk_file.create(size=fsize) as writer:
                 upload_size = 0
-
+                # by byliu
+                upload_size_orig = 0
+                is_encrypted = False
+                #end by byliu
                 # If the proxy wants to send us object metadata after the
                 # object body, it sets some headers. We have to tell the
                 # proxy, in the 100 Continue response, that we're able to
@@ -582,6 +620,20 @@ class ObjectController(BaseStorageServer):
                         if start_time > upload_expiration:
                             self.logger.increment('PUT.timeouts')
                             return HTTPRequestTimeout(request=request)
+                        #by byliu
+                        upload_size_orig += len(chunk)
+                        etag_orig.update(chunk)
+                        if 'OBJ_ENC_KEY' in request.headers and \
+                                        MAIN_KEY in request.headers and \
+                                        MAIN_KEY_MD5 in request.headers:
+                            #encrypt data
+                            obj_enc_key = request.headers['OBJ_ENC_KEY']
+                            self.crypto_driver.set_key(obj_enc_key)
+                            encryption_context = self.crypto_driver.encryption_context(obj_enc_key)
+                            chunk = self.crypto_driver.encrypt(encryption_context, chunk)
+                            is_encrypted = True
+                        #end by byliu
+
                         etag.update(chunk)
                         upload_size = writer.write(chunk)
                         elapsed_time += time.time() - start_time
@@ -602,8 +654,15 @@ class ObjectController(BaseStorageServer):
                 request_etag = (footer_meta.get('etag') or
                                 request.headers.get('etag', '')).lower()
                 etag = etag.hexdigest()
-                if request_etag and request_etag != etag:
+
+                #by byliu
+                etag_orig = etag_orig.hexdigest()
+                if request_etag and request_etag != etag_orig:
                     return HTTPUnprocessableEntity(request=request)
+                # if request_etag and request_etag != etag:
+                #     return HTTPUnprocessableEntity(request=request)
+                #end by byliu
+
                 metadata = {
                     'X-Timestamp': request.timestamp.internal,
                     'Content-Type': request.headers['content-type'],
@@ -622,6 +681,35 @@ class ObjectController(BaseStorageServer):
                     if header_key in request.headers:
                         header_caps = header_key.title()
                         metadata[header_caps] = request.headers[header_key]
+                #by byliu
+                if is_encrypted:
+                    main_key = request.headers[MAIN_KEY]
+                    self.crypto_driver.set_key(main_key)
+                    encryption_context = self.crypto_driver.encryption_context(main_key)
+                    obj_enc_key_encrpyted = self.crypto_driver.encrypt \
+                            (encryption_context, request.headers['OBJ_ENC_KEY'])
+                    metadata['ETag-Orig'] = etag_orig
+                    metadata['Content-Length-Orig'] = str(upload_size_orig)
+                    metadata[ENC_KEY_OBJ] = base64.encodestring(obj_enc_key_encrpyted).replace('\n', '')
+                else:
+                    metadata.pop(MAIN_KEY_MD5, 0)
+                #change enc main key
+                if is_encrypted and MAIN_KEY_NEW in request.headers and MAIN_KEY_MD5_NEW in request.headers:
+                    #decrypt obj key
+                    self.crypto_driver.set_key(request.headers[MAIN_KEY])
+                    encryption_context = \
+                        self.crypto_driver.encryption_context(request.headers[MAIN_KEY])
+                    obj_key_dec = base64.decodestring(metadata[ENC_KEY_OBJ])
+                    obj_key_dec = self.crypto_driver.decrypt(encryption_context, obj_key_dec)
+                    #re encrypt obj key
+                    self.crypto_driver.set_key(request.headers[MAIN_KEY_NEW])
+                    encryption_context = \
+                        self.crypto_driver.encryption_context(request.headers[MAIN_KEY_NEW])
+                    obj_key_enc = self.crypto_driver.encrypt(encryption_context, obj_key_dec)
+                    obj_key_enc = base64.encodestring(obj_key_enc).replace('\n', '')
+                    metadata[ENC_KEY_OBJ] = obj_key_enc
+                    metadata[MAIN_KEY_MD5] = request.headers[MAIN_KEY_MD5_NEW]
+                #end by byliu
                 writer.put(metadata)
 
                 # if the PUT requires a two-phase commit (a data and a commit
@@ -673,7 +761,10 @@ class ObjectController(BaseStorageServer):
             'PUT', account, container, obj, request,
             update_headers,
             device, policy)
-        return HTTPCreated(request=request, etag=etag)
+        #by byliu
+        # return HTTPCreated(request=request, etag=etag)
+        return HTTPCreated(request=request, etag=etag_orig)
+        #end by byliu
 
     @public
     @timing_stats()
@@ -693,7 +784,29 @@ class ObjectController(BaseStorageServer):
         try:
             with disk_file.open():
                 metadata = disk_file.get_metadata()
-                obj_size = int(metadata['Content-Length'])
+                #by byliu
+                obj_key_dec = None
+                if ENC_KEY_OBJ in metadata and MAIN_KEY_MD5 in metadata:
+                    #the object is encrypted
+                    if MAIN_KEY in request.headers and MAIN_KEY_MD5 in request.headers:
+                        if metadata[MAIN_KEY_MD5] != request.headers[MAIN_KEY_MD5]:
+                            return HTTPPreconditionFailed(request=request, body='wrong key to decrypt data')
+                        else:
+                            #decrypt obj key
+                            self.crypto_driver.set_key(request.headers[MAIN_KEY])
+                            encryption_context = \
+                                self.crypto_driver.encryption_context(request.headers[MAIN_KEY])
+                            obj_key_dec = base64.decodestring(metadata[ENC_KEY_OBJ])
+                            obj_key_dec = self.crypto_driver.decrypt(encryption_context, obj_key_dec)
+                    else:
+                        return HTTPPreconditionFailed(request=request, body='Data is encrypted')
+
+                if 'Content-Length-Orig' in metadata:
+                    obj_size = int(metadata['Content-Length-Orig'])
+                else:
+                    obj_size = int(metadata['Content-Length'])
+                #obj_size = int(metadata['Content-Length'])
+                #end by byliu
                 file_x_ts = Timestamp(metadata['X-Timestamp'])
                 keep_cache = (self.keep_cache_private or
                               ('X-Auth-Token' not in request.headers and
@@ -712,7 +825,13 @@ class ObjectController(BaseStorageServer):
                     if is_sys_or_user_meta('object', key) or \
                             key.lower() in self.allowed_headers:
                         response.headers[key] = value
-                response.etag = metadata['ETag']
+                #by byliu
+                if 'ETag-Orig' in metadata:
+                    response.etag = metadata['ETag-Orig']
+                else:
+                    response.etag = metadata['ETag']
+                #response.etag = metadata['ETag']
+                #end by byliu
                 response.last_modified = math.ceil(float(file_x_ts))
                 response.content_length = obj_size
                 try:
@@ -767,13 +886,25 @@ class ObjectController(BaseStorageServer):
             if is_sys_or_user_meta('object', key) or \
                     key.lower() in self.allowed_headers:
                 response.headers[key] = value
-        response.etag = metadata['ETag']
+        #by byliu
+        if 'ETag-Orig' in metadata:
+            response.etag = metadata['ETag-Orig']
+        else:
+            response.etag = metadata['ETag']
+        # response.etag = metadata['ETag']
+        #end by byliu
         ts = Timestamp(metadata['X-Timestamp'])
         response.last_modified = math.ceil(float(ts))
         # Needed for container sync feature
         response.headers['X-Timestamp'] = ts.normal
         response.headers['X-Backend-Timestamp'] = ts.internal
-        response.content_length = int(metadata['Content-Length'])
+        #by byliu
+        if 'Content-Length-Orig' in metadata:
+            response.content_length = int(metadata['Content-Length-Orig'])
+        else:
+            response.content_length = int(metadata['Content-Length'])
+        # response.content_length = int(metadata['Content-Length'])
+        #end by byliu
         try:
             response.content_encoding = metadata['Content-Encoding']
         except KeyError:

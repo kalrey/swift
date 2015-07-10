@@ -68,6 +68,12 @@ from swift.common.storage_policy import (
     REPL_POLICY, EC_POLICY)
 from functools import partial
 
+#by byliu
+from swift.obj.encryptor import M2CryptoDriver
+import base64
+#end by byliu
+
+
 
 PICKLE_PROTOCOL = 2
 ONE_WEEK = 604800
@@ -1000,7 +1006,11 @@ class DiskFileReader(object):
     def __init__(self, fp, data_file, obj_size, etag, threadpool,
                  disk_chunk_size, keep_cache_size, device_path, logger,
                  quarantine_hook, use_splice, pipe_size, diskfile,
-                 keep_cache=False):
+                 keep_cache=False,
+                 #by byliu
+                 obj_key_dec=None, crypto_driver=None
+                 #end by byliu
+                 ):
         # Parameter tracking
         self._fp = fp
         self._data_file = data_file
@@ -1014,6 +1024,12 @@ class DiskFileReader(object):
         self._quarantine_hook = quarantine_hook
         self._use_splice = use_splice
         self._pipe_size = pipe_size
+        #by byliu
+        self.obj_key_dec = obj_key_dec
+        self.crypto_driver = crypto_driver
+        if self.obj_key_dec:
+            self._disk_chunk_size = (self._disk_chunk_size/16)*16 + 16
+        #end by byliu
         if keep_cache:
             # Caller suggests we keep this in cache, only do it if the
             # object's size is less than the maximum.
@@ -1048,6 +1064,12 @@ class DiskFileReader(object):
                 chunk = self._threadpool.run_in_thread(
                     self._fp.read, self._disk_chunk_size)
                 if chunk:
+                    #by byliu
+                    if self.obj_key_dec:
+                        self.crypto_driver.set_key(self.obj_key_dec)
+                        encryption_context = self.crypto_driver.encryption_context(self.obj_key_dec)
+                        chunk = self.crypto_driver.decrypt(encryption_context, chunk)
+                    #end by byliu
                     if self._iter_etag:
                         self._iter_etag.update(chunk)
                     self._bytes_read += len(chunk)
@@ -1652,8 +1674,12 @@ class DiskFile(object):
         with self.open():
             return self.get_metadata()
 
-    def reader(self, keep_cache=False,
-               _quarantine_hook=lambda m: None):
+    #by byliu
+    def reader(self, keep_cache=False, _quarantine_hook=lambda m: None,
+               obj_key_dec=None, crypto_driver=None):
+    # def reader(self, keep_cache=False,
+    #            _quarantine_hook=lambda m: None):
+    #end by byliu
         """
         Return a :class:`swift.common.swob.Response` class compatible
         "`app_iter`" object as defined by
@@ -1670,12 +1696,30 @@ class DiskFile(object):
                                  Not needed by the REST layer.
         :returns: a :class:`swift.obj.diskfile.DiskFileReader` object
         """
+        #by byliu
+        obj_size_toRead = self._metadata['Content-Length']
+        obj_etag_toRead = self._metadata['ETag']
+        if obj_key_dec and crypto_driver:
+            #need decrypt
+            if 'Content-Length-Orig' in self._metadata:
+                obj_size_toRead = self._metadata['Content-Length-Orig']
+            if 'ETag-Orig' in self._metadata:
+                obj_etag_toRead = self._metadata['ETag-Orig']
         dr = self.reader_cls(
-            self._fp, self._data_file, int(self._metadata['Content-Length']),
-            self._metadata['ETag'], self._threadpool, self._disk_chunk_size,
+            self._fp, self._data_file, int(obj_size_toRead),
+            obj_etag_toRead, self._threadpool, self._disk_chunk_size,
             self._manager.keep_cache_size, self._device_path, self._logger,
             use_splice=self._use_splice, quarantine_hook=_quarantine_hook,
-            pipe_size=self._pipe_size, diskfile=self, keep_cache=keep_cache)
+            pipe_size=self._pipe_size, diskfile=self, keep_cache=keep_cache,
+            obj_key_dec=obj_key_dec, crypto_driver=crypto_driver)
+        # dr = self.reader_cls(
+        #     self._fp, self._data_file, int(self._metadata['Content-Length']),
+        #     self._metadata['ETag'], self._threadpool, self._disk_chunk_size,
+        #     self._manager.keep_cache_size, self._device_path, self._logger,
+        #     use_splice=self._use_splice, quarantine_hook=_quarantine_hook,
+        #     pipe_size=self._pipe_size, diskfile=self, keep_cache=keep_cache)
+        #end by byliu
+
         # At this point the reader object is now responsible for closing
         # the file pointer.
         self._fp = None

@@ -47,6 +47,7 @@ class AccountController(BaseStorageServer):
     server_type = 'account-server'
 
     def __init__(self, conf, logger=None):
+        os.environ['TZ'] = 'Asia/Shanghai'
         super(AccountController, self).__init__(conf)
         self.logger = logger or get_logger(conf, log_route='account-server')
         self.log_requests = config_true_value(conf.get('log_requests', 'true'))
