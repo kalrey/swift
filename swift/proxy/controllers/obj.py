@@ -225,6 +225,10 @@ class BaseObjectController(Controller):
                                        container_info['storage_policy'])
         policy = POLICIES.get_by_index(policy_index)
         obj_ring = self.app.get_object_ring(policy_index)
+        #add by kalrey
+        req.environ['swift.log_prefix'] = container_info['log_prefix']
+        req.environ['swift.log_target'] = container_info['log_target']
+        #end by kalrey
         req.headers['X-Backend-Storage-Policy-Index'] = policy_index
         if 'swift.authorize' in req.environ:
             aresp = req.environ['swift.authorize'](req)
@@ -240,6 +244,11 @@ class BaseObjectController(Controller):
         if ';' in resp.headers.get('content-type', ''):
             resp.content_type = clean_content_type(
                 resp.headers['content-type'])
+        #add by kalrey
+        if resp.headers.get('x-content-length', None):
+            req.environ['swift.object_length'] = resp.headers.get('x-content-length')
+            resp.headers.pop('x-content-length')
+        #end by kalrey
         return resp
 
     @public
@@ -290,6 +299,10 @@ class BaseObjectController(Controller):
             container_partition = container_info['partition']
             containers = container_info['nodes']
             req.acl = container_info['write_acl']
+            #add by kalrey
+            req.environ['swift.log_prefix'] = container_info['log_prefix']
+            req.environ['swift.log_target'] = container_info['log_target']
+            #end by kalrey
             if 'swift.authorize' in req.environ:
                 aresp = req.environ['swift.authorize'](req)
                 if aresp:
@@ -898,7 +911,10 @@ class BaseObjectController(Controller):
         req.headers['X-Backend-Storage-Policy-Index'] = policy_index
         req.acl = container_info['write_acl']
         req.environ['swift_sync_key'] = container_info['sync_key']
-
+        #add by kalrey
+        req.environ['swift.log_prefix'] = container_info['log_prefix']
+        req.environ['swift.log_target'] = container_info['log_target']
+        #end by kalrey
         # is request authorized
         if 'swift.authorize' in req.environ:
             aresp = req.environ['swift.authorize'](req)
@@ -966,6 +982,10 @@ class BaseObjectController(Controller):
         req.acl = container_info['write_acl']
         req.environ['swift_sync_key'] = container_info['sync_key']
         object_versions = container_info['versions']
+        #add by kalrey
+        req.environ['swift.log_prefix'] = container_info['log_prefix']
+        req.environ['swift.log_target'] = container_info['log_target']
+        #end by kalrey
         if 'swift.authorize' in req.environ:
             aresp = req.environ['swift.authorize'](req)
             if aresp:

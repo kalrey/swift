@@ -27,6 +27,9 @@ from swift import gettext_ as _
 from StringIO import StringIO
 from textwrap import dedent
 
+#add by kalrey
+import traceback
+#end by kalrey
 import eventlet
 import eventlet.debug
 from eventlet import greenio, GreenPool, sleep, wsgi, listen
@@ -544,6 +547,9 @@ def _initrp(conf_path, app_section, *args, **kwargs):
     try:
         conf = appconfig(conf_path, name=app_section)
     except Exception as e:
+        #add by kalrey
+        print traceback.format_exc()
+        #end by kalrey
         raise ConfigFileError("Error trying to load config from %s: %s" %
                               (conf_path, e))
 

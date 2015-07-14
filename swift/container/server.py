@@ -77,7 +77,9 @@ class ContainerController(BaseStorageServer):
 
     # Ensure these are all lowercase
     save_headers = ['x-container-read', 'x-container-write',
-                    'x-container-sync-key', 'x-container-sync-to']
+                    'x-container-sync-key', 'x-container-sync-to',
+                    'x-container-log-prefix', 'x-container-log-target',
+                    'x-container-cdn']
     server_type = 'container-server'
 
     def __init__(self, conf, logger=None):
@@ -447,6 +449,11 @@ class ContainerController(BaseStorageServer):
             return HTTPPreconditionFailed(body='Bad delimiter')
         marker = get_param(req, 'marker', '')
         end_marker = get_param(req, 'end_marker')
+        #add by kalrey
+        delimiter_only = get_param(req, 'delimiter_only')
+        if delimiter_only:
+            delimiter_only = delimiter_only.lower() == 'true'
+        #end by kalrey
         limit = constraints.CONTAINER_LISTING_LIMIT
         given_limit = get_param(req, 'limit')
         if given_limit and given_limit.isdigit():
@@ -466,9 +473,26 @@ class ContainerController(BaseStorageServer):
         resp_headers = gen_resp_headers(info, is_deleted=is_deleted)
         if is_deleted:
             return HTTPNotFound(request=req, headers=resp_headers)
-        container_list = broker.list_objects_iter(
-            limit, marker, end_marker, prefix, delimiter, path,
-            storage_policy_index=info['storage_policy_index'])
+        #modify by kalrey
+        #container_list = broker.list_objects_iter(
+        #    limit, marker, end_marker, prefix, delimiter, path,
+        #    storage_policy_index=info['storage_policy_index'])
+        counter = get_param(req, 'count')
+        if counter and counter.lower() == 'true':
+            count = broker.count_objects(marker, end_marker, prefix,
+                                         delimiter, path,
+                                         storage_policy_index=info['storage_policy_index'],
+                                         delimiter_only=delimiter_only)
+            ret = Response(request=req, headers=resp_headers,
+                           content_type=out_content_type, charset='utf-8')
+            ret.body = '%d\n' % count
+            return ret
+        else:
+            container_list = broker.list_objects_iter(
+                limit, marker, end_marker, prefix, delimiter, path,
+                storage_policy_index=info['storage_policy_index'],
+                delimiter_only=delimiter_only)
+        #end by kalrey
         return self.create_listing(req, out_content_type, info, resp_headers,
                                    broker.metadata, container_list, container)
 

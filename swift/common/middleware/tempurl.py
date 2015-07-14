@@ -293,7 +293,10 @@ class TempURL(object):
         if env['REQUEST_METHOD'] == 'OPTIONS':
             return self.app(env, start_response)
         info = self._get_temp_url_info(env)
-        temp_url_sig, temp_url_expires, filename, inline_disposition = info
+        #modify by kalrey
+        #temp_url_sig, temp_url_expires, filename, inline_disposition = info
+        temp_url_sig, temp_url_expires, filename, inline_disposition, source = info
+        #end by kalrey
         if temp_url_sig is None and temp_url_expires is None:
             return self.app(env, start_response)
         if not temp_url_sig or not temp_url_expires:
@@ -327,10 +330,18 @@ class TempURL(object):
         env['swift.authorize'] = lambda req: None
         env['swift.authorize_override'] = True
         env['REMOTE_USER'] = '.wsgi.tempurl'
-        qs = {'temp_url_sig': temp_url_sig,
-              'temp_url_expires': temp_url_expires}
+        #modify by kalrey
+        #qs = {'temp_url_sig': temp_url_sig,
+        #    'temp_url_expires': temp_url_expires}
+        qs = {'token': temp_url_sig,
+              'e': temp_url_expires}
+        #end by kalrey
         if filename:
             qs['filename'] = filename
+        #add by kalrey
+        if source:
+            qs['source'] = source
+        #end by kalrey
         env['QUERY_STRING'] = urlencode(qs)
 
         def _start_response(status, headers, exc_info=None):
@@ -374,9 +385,15 @@ class TempURL(object):
         :param env: The WSGI environment for the request.
         :returns: Account str or None.
         """
+        #add by kalrey
+        path_info = env.get('swift.name2id.ORIG_PATH_INFO') if env.get('swift.name2id.ORIG_PATH_INFO') else env.get('PATH_INFO')
+        #end by kalrey
         if env['REQUEST_METHOD'] in self.methods:
             try:
-                ver, acc, cont, obj = split_path(env['PATH_INFO'], 4, 4, True)
+                #modify by kalrey
+                #ver, acc, cont, obj = split_path(env['PATH_INFO'], 4, 4, True)
+                ver, acc, cont, obj = split_path(path_info, 4, 4, True)
+                #end by kalrey
             except ValueError:
                 return None
             if ver == 'v1' and obj.strip('/'):
@@ -393,7 +410,10 @@ class TempURL(object):
         :param env: The WSGI environment for the request.
         :returns: (sig, expires, filename, inline) as described above.
         """
-        temp_url_sig = temp_url_expires = filename = inline = None
+        #modify by kalrey
+        #temp_url_sig = temp_url_expires = filename = inline = None
+        temp_url_sig = temp_url_expires = filename = inline = source = None
+        #end by kalrey
         qs = parse_qs(env.get('QUERY_STRING', ''), keep_blank_values=True)
         #modify by kalrey
         #if 'temp_url_sig' in qs:
@@ -413,7 +433,12 @@ class TempURL(object):
             filename = qs['filename'][0]
         if 'inline' in qs:
             inline = True
-        return temp_url_sig, temp_url_expires, filename, inline
+        #modify by kalrey
+        if 'source' in qs:
+            source = qs['source'][0]
+        #return temp_url_sig, temp_url_expires, filename, inline
+        return temp_url_sig, temp_url_expires, filename, inline, source
+        #end by kalrey
 
     def _get_keys(self, env, account):
         """
@@ -452,8 +477,12 @@ class TempURL(object):
         """
         if not request_method:
             request_method = env['REQUEST_METHOD']
-        return [get_hmac(
-            request_method, env['PATH_INFO'], expires, key) for key in keys]
+        #add by kalrey
+        path_info = env.get('swift.name2id.ORIG_PATH_INFO') if env.get('swift.name2id.ORIG_PATH_INFO') else env.get('PATH_INFO')
+        #modify by kalrey
+        #return [get_hmac(request_method, env['PATH_INFO'], expires, key) for key in keys]
+        return [get_hmac(request_method, path_info, expires, key) for key in keys]
+        #end by kalrey
 
     def _invalid(self, env, start_response):
         """

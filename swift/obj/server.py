@@ -842,6 +842,9 @@ class ObjectController(BaseStorageServer):
                     pass
                 response.headers['X-Timestamp'] = file_x_ts.normal
                 response.headers['X-Backend-Timestamp'] = file_x_ts.internal
+                #add by kalrey
+                response.headers['X-Content-Length'] = obj_size
+                #end by kalrey
                 resp = request.get_response(response)
         except DiskFileXattrNotSupported:
             return HTTPInsufficientStorage(drive=device, request=request)

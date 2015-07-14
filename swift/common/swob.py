@@ -1199,8 +1199,29 @@ class Response(object):
     def _response_iter(self, app_iter, body):
         etag = self.conditional_etag
         if self.conditional_response and self.request:
+            #add by kalrey
+            last_modify = match = False
+            #end by kalrey
             if etag and self.request.if_none_match and \
                     etag in self.request.if_none_match:
+            #add by kalrey
+                match = True
+
+            if self.last_modified and self.request.if_modified_since \
+               and self.last_modified <= self.request.if_modified_since:
+                last_modify = True
+
+            if self.request.if_none_match and self.request.if_modified_since:
+                if match and last_modify:
+                    self.status = 304
+                    self.content_length = 0
+                    return ['']
+            elif match:
+                self.status = 304
+                self.content_length = 0
+                return ['']
+            elif last_modify:
+            #end by kalrey
                 self.status = 304
                 self.content_length = 0
                 return ['']
@@ -1220,12 +1241,13 @@ class Response(object):
                 self.status = 412
                 self.content_length = 0
                 return ['']
-
-            if self.last_modified and self.request.if_modified_since \
-               and self.last_modified <= self.request.if_modified_since:
-                self.status = 304
-                self.content_length = 0
-                return ['']
+            #delete by kalrey
+            #if self.last_modified and self.request.if_modified_since \
+            #   and self.last_modified <= self.request.if_modified_since:
+            #    self.status = 304
+            #    self.content_length = 0
+            #    return ['']
+            #end by kalrey
 
             if self.last_modified and self.request.if_unmodified_since \
                and self.last_modified > self.request.if_unmodified_since:

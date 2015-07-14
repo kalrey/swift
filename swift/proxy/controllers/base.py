@@ -173,7 +173,11 @@ def headers_to_container_info(headers, status_int=HTTP_OK):
             'max_age': meta.get('access-control-max-age')
         },
         'meta': meta,
-        'sysmeta': sysmeta
+        'sysmeta': sysmeta,
+        #add by kalrey
+        'log_prefix': headers.get('x-container-log-prefix'),
+        'log_target': headers.get('x-container-log-target')
+        #end by kalrey
     }
 
 
