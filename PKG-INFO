@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: swift
-Version: 2.3.0-iflytek(kilo)
+Version: 2.3.0-iflytek
 Summary: OpenStack Object Storage
 Home-page: http://www.openstack.org/
 Author: OpenStack(kalrey)

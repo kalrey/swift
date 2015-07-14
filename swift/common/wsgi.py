@@ -548,7 +548,7 @@ def _initrp(conf_path, app_section, *args, **kwargs):
         conf = appconfig(conf_path, name=app_section)
     except Exception as e:
         #add by kalrey
-        print traceback.format_exc()
+        print(traceback.format_exc())
         #end by kalrey
         raise ConfigFileError("Error trying to load config from %s: %s" %
                               (conf_path, e))
