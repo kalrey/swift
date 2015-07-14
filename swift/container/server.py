@@ -82,6 +82,7 @@ class ContainerController(BaseStorageServer):
 
     def __init__(self, conf, logger=None):
         super(ContainerController, self).__init__(conf)
+        os.environ['TZ'] = 'Asia/Shanghai'
         self.logger = logger or get_logger(conf, log_route='container-server')
         self.log_requests = config_true_value(conf.get('log_requests', 'true'))
         self.root = conf.get('devices', '/srv/node')

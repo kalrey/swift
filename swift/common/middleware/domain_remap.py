@@ -50,6 +50,7 @@ sync destinations.
 """
 
 from swift.common.swob import Request, HTTPBadRequest
+from swift.common.utils import get_logger
 
 
 class DomainRemapMiddleware(object):
@@ -63,64 +64,55 @@ class DomainRemapMiddleware(object):
     :param conf: The configuration dict for the middleware.
     """
 
-    def __init__(self, app, conf):
+    def __init__(self, app, conf, logger=None):
         self.app = app
-        self.storage_domain = conf.get('storage_domain', 'example.com')
-        if self.storage_domain and self.storage_domain[0] != '.':
-            self.storage_domain = '.' + self.storage_domain
+        self.storage_domains = conf.get('storage_domain', 'example.com')
+        if self.storage_domains:
+            self.storage_domains = self.storage_domains.split(',')
+        self.storage_domains = ['.' + x if x[0] != '.' else x for x in self.storage_domains]
         self.path_root = conf.get('path_root', 'v1').strip('/')
-        prefixes = conf.get('reseller_prefixes', 'AUTH')
-        self.reseller_prefixes = [x.strip() for x in prefixes.split(',')
-                                  if x.strip()]
-        self.reseller_prefixes_lower = [x.lower()
-                                        for x in self.reseller_prefixes]
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = get_logger(conf, log_route="domain_remap")
+
 
     def __call__(self, env, start_response):
-        if not self.storage_domain:
+        if not self.storage_domains:
             return self.app(env, start_response)
         if 'HTTP_HOST' in env:
             given_domain = env['HTTP_HOST']
         else:
             given_domain = env['SERVER_NAME']
         port = ''
+        env['ORIG_PATH_INFO'] = env['PATH_INFO']
         if ':' in given_domain:
             given_domain, port = given_domain.rsplit(':', 1)
-        if given_domain.endswith(self.storage_domain):
-            parts_to_parse = given_domain[:-len(self.storage_domain)]
-            parts_to_parse = parts_to_parse.strip('.').split('.')
-            len_parts_to_parse = len(parts_to_parse)
-            if len_parts_to_parse == 2:
-                container, account = parts_to_parse
-            elif len_parts_to_parse == 1:
-                container, account = None, parts_to_parse[0]
-            else:
-                resp = HTTPBadRequest(request=Request(env),
-                                      body='Bad domain in host header',
-                                      content_type='text/plain')
-                return resp(env, start_response)
-            if len(self.reseller_prefixes) > 0:
-                if '_' not in account and '-' in account:
-                    account = account.replace('-', '_', 1)
-                account_reseller_prefix = account.split('_', 1)[0].lower()
-                if account_reseller_prefix not in self.reseller_prefixes_lower:
-                    # account prefix is not in config list. bail.
-                    return self.app(env, start_response)
-                prefix_index = self.reseller_prefixes_lower.index(
-                    account_reseller_prefix)
-                real_prefix = self.reseller_prefixes[prefix_index]
-                if not account.startswith(real_prefix):
-                    account_suffix = account[len(real_prefix):]
-                    account = real_prefix + account_suffix
-            path = env['PATH_INFO'].strip('/')
-            new_path_parts = ['', self.path_root, account]
-            if container:
-                new_path_parts.append(container)
-            if path.startswith(self.path_root):
-                path = path[len(self.path_root):].lstrip('/')
-            if path:
-                new_path_parts.append(path)
-            new_path = '/'.join(new_path_parts)
-            env['PATH_INFO'] = new_path
+        for storage_domain in self.storage_domains:
+            if given_domain.endswith(storage_domain):
+                parts_to_parse = given_domain[:-len(storage_domain)]
+                parts_to_parse = parts_to_parse.strip('.').split('.')
+                len_parts_to_parse = len(parts_to_parse)
+                if len_parts_to_parse == 2:
+                    container, account = parts_to_parse
+                elif len_parts_to_parse == 1:
+                    container, account = None, parts_to_parse[0]
+                else:
+                    resp = HTTPBadRequest(request=Request(env),
+                                          body='Bad domain in host header',
+                                          content_type='text/plain')
+                    return resp(env, start_response)
+                path = env['PATH_INFO'].lstrip('/')
+                new_path_parts = ['', self.path_root, account]
+                if container:
+                    new_path_parts.append(container)
+                if path.startswith(self.path_root):
+                    path = path[len(self.path_root):].lstrip('/')
+                if path:
+                    new_path_parts.append(path)
+                new_path = '/'.join(new_path_parts)
+                env['PATH_INFO'] = new_path
+                break
         return self.app(env, start_response)
 
 

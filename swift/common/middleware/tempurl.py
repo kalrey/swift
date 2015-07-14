@@ -395,11 +395,16 @@ class TempURL(object):
         """
         temp_url_sig = temp_url_expires = filename = inline = None
         qs = parse_qs(env.get('QUERY_STRING', ''), keep_blank_values=True)
-        if 'temp_url_sig' in qs:
-            temp_url_sig = qs['temp_url_sig'][0]
-        if 'temp_url_expires' in qs:
+        #modify by kalrey
+        #if 'temp_url_sig' in qs:
+        #    temp_url_sig = qs['temp_url_sig'][0]
+        #if 'temp_url_expires' in qs:
+        if 'token' in qs:
+            temp_url_sig = qs['token'][0]
+        if 'e' in qs:
             try:
-                temp_url_expires = int(qs['temp_url_expires'][0])
+        #        temp_url_expires = int(qs['temp_url_expires'][0])
+                temp_url_expires = int(qs['e'][0])
             except ValueError:
                 temp_url_expires = 0
             if temp_url_expires < time():

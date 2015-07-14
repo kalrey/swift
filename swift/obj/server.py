@@ -119,6 +119,7 @@ class ObjectController(BaseStorageServer):
         /etc/swift/object-server.conf-sample.
         """
         super(ObjectController, self).__init__(conf)
+        os.environ['TZ'] = 'Asia/Shanghai'
         self.logger = logger or get_logger(conf, log_route='object-server')
         self.node_timeout = int(conf.get('node_timeout', 3))
         self.conn_timeout = float(conf.get('conn_timeout', 0.5))

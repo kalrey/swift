@@ -462,7 +462,7 @@ class KeystoneAuth(object):
 
         # Check if a user tries to access an account that does not match their
         # token
-        if not self._account_matches_tenant(account, tenant_id):
+        if not self._account_matches_tenant(account, tenant_id) and not account == tenant_name:
             log_msg = 'tenant mismatch: %s != %s'
             self.logger.debug(log_msg, account, tenant_id)
             return self.denied_response(req)
@@ -529,12 +529,14 @@ class KeystoneAuth(object):
         #allow OPTIONS requests to proceed as normal
         if req.method == 'OPTIONS':
             return
-
-        is_authoritative_authz = (account and
-                                  (self._get_account_prefix(account) in
-                                   self.reseller_prefixes))
-        if not is_authoritative_authz:
+        #modify by kalrey
+        #is_authoritative_authz = (account and
+        #                          (self._get_account_prefix(account) in
+        #                           self.reseller_prefixes))
+        #if not is_authoritative_authz:
+        if not account:
             return self.denied_response(req)
+        #end by kalrey
 
         referrers, roles = swift_acl.parse_acl(getattr(req, 'acl', None))
         authorized = self._authorize_unconfirmed_identity(req, obj, referrers,

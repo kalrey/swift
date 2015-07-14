@@ -89,6 +89,7 @@ class AuditorWorker(object):
         all_locs = self.diskfile_mgr.object_audit_location_generator(
             device_dirs=device_dirs)
         for location in all_locs:
+            self.logger.info(_('Object auditing: %s' % location))
             loop_time = time.time()
             self.failsafe_object_audit(location)
             self.logger.timing_since('timing', loop_time)

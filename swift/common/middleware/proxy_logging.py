@@ -72,14 +72,57 @@ bandwidth usage will want to only sum up logs with no swift.source.
 """
 
 import time
+import json
 from urllib import quote, unquote
 
 from swift.common.swob import Request
 from swift.common.utils import (get_logger, get_remote_client,
                                 get_valid_utf8_str, config_true_value,
-                                InputProxy, list_from_csv, get_policy_index)
+                                InputProxy, list_from_csv)
 
 QUOTE_SAFE = '/:'
+
+
+class SwiftLog(object):
+    def __init__(self):
+        self.remoteClient = None
+        self.serverType = 'proxy-server'
+        self.remoteAddr = None
+        self.date = None
+        self.method = None
+        self.request = None
+        self.srvProtocol = None
+        self.status = None
+        self.referer = None
+        self.userAgent = None
+        self.authToken = None
+        self.bytesRecv = None
+        self.bytesSent = None
+        self.etag = None
+        self.transId = None
+        self.reqTime = None
+        self.source = None
+        self.origPathInfo = None
+
+        self.byteorgSend = None
+
+        self.serverName = None
+        self.serverPort = None
+        self.remotePort = None
+        self.tenantName = None
+        self.tenantId = None
+        self.userName = None
+        self.userId = None
+        self.host = None
+        self.identityStatus = None
+        self.contentType = None
+        self.timestamp = None
+        self.role = None
+        self.logPrefix = None
+        self.logTarget = None
+
+    def __str__(self):
+        return json.dumps(self.__dict__)
 
 
 class ProxyLoggingMiddleware(object):
@@ -135,7 +178,7 @@ class ProxyLoggingMiddleware(object):
         return value
 
     def log_request(self, req, status_int, bytes_received, bytes_sent,
-                    start_time, end_time, resp_headers=None):
+                    start_time, end_time):
         """
         Log a request.
 
@@ -145,11 +188,12 @@ class ProxyLoggingMiddleware(object):
         :param bytes_sent: bytes yielded to the WSGI server
         :param start_time: timestamp request started
         :param end_time: timestamp request completed
-        :param resp_headers: dict of the response headers
         """
-        resp_headers = resp_headers or {}
-        req_path = get_valid_utf8_str(req.path)
-        the_request = quote(unquote(req_path), QUOTE_SAFE)
+        if req.environ.get('swift.name2id.ORIG_PATH_INFO'):
+            the_request = req.environ.get('swift.name2id.ORIG_PATH_INFO')
+        else:
+            req_path = get_valid_utf8_str(req.path)
+            the_request = quote(unquote(req_path), QUOTE_SAFE)
         if req.query_string:
             the_request = the_request + '?' + req.query_string
         logged_headers = None
@@ -163,37 +207,48 @@ class ProxyLoggingMiddleware(object):
                                            for k, v in req.headers.items())
 
         method = self.method_from_req(req)
-        end_gmtime_str = time.strftime('%d/%b/%Y/%H/%M/%S',
-                                       time.gmtime(end_time))
         duration_time_str = "%.4f" % (end_time - start_time)
-        start_time_str = "%.9f" % start_time
-        end_time_str = "%.9f" % end_time
-        policy_index = get_policy_index(req.headers, resp_headers)
-        self.access_logger.info(' '.join(
-            quote(str(x) if x else '-', QUOTE_SAFE)
-            for x in (
-                get_remote_client(req),
-                req.remote_addr,
-                end_gmtime_str,
-                method,
-                the_request,
-                req.environ.get('SERVER_PROTOCOL'),
-                status_int,
-                req.referer,
-                req.user_agent,
-                self.obscure_sensitive(req.headers.get('x-auth-token')),
-                bytes_received,
-                bytes_sent,
-                req.headers.get('etag', None),
-                req.environ.get('swift.trans_id'),
-                logged_headers,
-                duration_time_str,
-                req.environ.get('swift.source'),
-                ','.join(req.environ.get('swift.log_info') or ''),
-                start_time_str,
-                end_time_str,
-                policy_index
-            )))
+
+        logInfo = SwiftLog()
+        logInfo.remoteClient = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(get_remote_client(req))
+        logInfo.remoteAddr = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.remote_addr)
+        logInfo.date = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(time.strftime('%Y/%m/%d/%H/%M/%S', time.localtime()))
+        logInfo.method = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(method)
+        logInfo.request = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(the_request)
+        logInfo.srvProtocol = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('SERVER_PROTOCOL'))
+        logInfo.status = status_int
+        logInfo.referer = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.referer)
+        logInfo.userAgent = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.user_agent)
+        logInfo.authToken = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(self.obscure_sensitive(req.headers.get('x-auth-token')))
+        logInfo.bytesRecv = bytes_received
+        logInfo.bytesSent = bytes_sent
+        logInfo.byteorgSend = bytes_sent
+        if status_int == 304 and logInfo.method == 'GET' and bytes_sent == 0:
+            logInfo.bytesSent = int(req.environ.get('swift.object_length', bytes_sent))
+        logInfo.etag = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.headers.get('etag', None))
+        logInfo.transId = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.trans_id'))
+        logInfo.reqTime = float(duration_time_str)
+        logInfo.source = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.source'))
+        logInfo.serverName = req.environ.get('SERVER_NAME', None)
+        serverPortStr = req.environ.get('SERVER_PORT', None)
+        logInfo.serverPort = int(serverPortStr) if serverPortStr else None
+        remotePortStr = req.environ.get('REMOTE_PORT', None)
+        logInfo.remotePort = int(remotePortStr) if remotePortStr else None
+        logInfo.tenantName = req.headers.get('X-Tenant-Name', None)
+        logInfo.tenantId = req.headers.get('X-Tenant-Id', None)
+        logInfo.userName = req.headers.get('X-User-Name', None)
+        logInfo.userId = req.headers.get('X-User-Id', None)
+        logInfo.host = req.headers.get('Host', None)
+        logInfo.identityStatus = req.headers.get('X-Identity-Status', None)
+        logInfo.contentType = req.headers.get('Content-Type', None)
+        logInfo.timestamp = req.headers.get('X-Timestamp', None)
+        logInfo.role = req.headers.get('X-Role', None)
+        logInfo.logPrefix = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.log_prefix'))
+        logInfo.logTarget = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.log_target'))
+        logInfo.origPathInfo = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('ORIG_PATH_INFO'))
+        self.access_logger.notice(logInfo)
+
+
         # Log timing and bytes-transferred data to StatsD
         metric_name = self.statsd_metric_name(req, status_int, method)
         # Only log data for valid controllers (or SOS) to keep the metric count
@@ -257,11 +312,10 @@ class ProxyLoggingMiddleware(object):
                     break
             else:
                 if not chunk:
-                    start_response_args[0][1].append(('Content-Length', '0'))
+                    start_response_args[0][1].append(('content-length', '0'))
                 elif isinstance(iterable, list):
                     start_response_args[0][1].append(
-                        ('Content-Length', str(sum(len(i) for i in iterable))))
-            resp_headers = dict(start_response_args[0][1])
+                        ('content-length', str(sum(len(i) for i in iterable))))
             start_response(*start_response_args[0])
             req = Request(env)
 
@@ -288,10 +342,7 @@ class ProxyLoggingMiddleware(object):
                 status_int = status_int_for_logging(client_disconnect)
                 self.log_request(
                     req, status_int, input_proxy.bytes_received, bytes_sent,
-                    start_time, time.time(), resp_headers=resp_headers)
-                close_method = getattr(iterable, 'close', None)
-                if callable(close_method):
-                    close_method()
+                    start_time, time.time())
 
         try:
             iterable = self.app(env, my_start_response)

@@ -73,6 +73,9 @@ class Application(object):
 
     def __init__(self, conf, memcache=None, logger=None, account_ring=None,
                  container_ring=None):
+
+        os.environ['TZ'] = 'Asia/Shanghai'
+
         if conf is None:
             conf = {}
         if logger is None:
@@ -402,6 +405,7 @@ class Application(object):
         except HTTPException as error_response:
             return error_response
         except (Exception, Timeout):
+            logging.exception('Unhandled exception')
             self.logger.exception(_('ERROR Unhandled exception in request'))
             return HTTPServerError(request=req)
 
