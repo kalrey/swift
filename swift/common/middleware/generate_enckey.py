@@ -53,25 +53,6 @@ class GenerageEnckeyMiddleware(object):
         return False
 
     def __call__(self, env, start_response):
-        # for cosbench encrypt test
-        # AES 256
-        # env['HTTP_X_OBJECT_SSE_C_KEY'] = '002a7e899443e07dac282638e6e0ba7b'
-        # env['HTTP_X_OBJECT_SSE_C_KEYMD5'] = 'd0d0ad649104ca6d1d977e4ca0c04478'
-        # AES 128
-        # env['HTTP_X_OBJECT_SSE_C_KEY'] = '002a7e899443e07d'
-        # env['HTTP_X_OBJECT_SSE_C_KEYMD5'] = 'ec4454910ba45831c3dad7df503ed6d2'
-        # end for conbench encrypt test
-
-        # # for cosbench ec test
-        env['HTTP_X_STORAGE_POLICY'] = 'ec104'
-        # path = env['PATH_INFO']
-        # pathS = path.split('/')
-        # length = len(pathS)
-        # if length == 4:
-        #     #PUT Container
-        #     env['HTTP_X_STORAGE_POLICY'] = 'ec104'
-        # # end for cosbench ec test
-
         req = Request(env)
         if req.method == 'PUT':
             if self.is2encrypt(req):

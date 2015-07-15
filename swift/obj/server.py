@@ -817,7 +817,12 @@ class ObjectController(BaseStorageServer):
                     conditional_etag = metadata.get(
                         request.headers['X-Backend-Etag-Is-At'])
                 response = Response(
-                    app_iter=disk_file.reader(keep_cache=keep_cache),
+                    app_iter=disk_file.reader(keep_cache=keep_cache,
+                                              #add by byliu
+                                              obj_key_dec=obj_key_dec,
+                                              crypto_driver=self.crypto_driver,
+                                              #end by byliu
+                                              ),
                     request=request, conditional_response=True,
                     conditional_etag=conditional_etag)
                 response.headers['Content-Type'] = metadata.get(
