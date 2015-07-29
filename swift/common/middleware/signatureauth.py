@@ -262,7 +262,7 @@ class SignatureAuthMiddleware(object):
         if not content_type:
             content_type = ''
 
-	content_md5 = req.headers.get('content-md5') or req.headers.get('etag')
+        content_md5 = req.headers.get('content-md5') or req.headers.get('etag')
         if not content_md5:
             content_md5 = ''
 
@@ -275,8 +275,6 @@ class SignatureAuthMiddleware(object):
                        'headers': canonicalize_headers}
 
         secret_key, token_data = self._get_cache_data(access_key)
-	secret_key = None
-	token_data = None
         if not secret_key:
             secret_key = self._get_secret_key(access_key)
             self._set_cache_data(access_key, secret_key)
