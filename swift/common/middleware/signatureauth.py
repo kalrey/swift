@@ -234,10 +234,7 @@ class SignatureAuthMiddleware(object):
 
         self.check_signature_expire(gmt_date)
 
-        ver, account, container, obj = req.split_path(
-                2, 4, rest_with_last=True)
-
-
+        ver, account, container, obj = req.split_path(2, 4, rest_with_last=True)
         canonicalize_headers = {}
         canonicalize_resource = ""
 
@@ -358,10 +355,10 @@ class SignatureAuthMiddleware(object):
 
     def check_signature_expire(self, date):
         try:
-	    gmt_format = "%a, %d %b %Y %H:%M:%S GMT"
+            gmt_format = "%a, %d %b %Y %H:%M:%S GMT"
             expire_time = datetime.datetime.strptime(date, gmt_format)
-	except Exception:
-	    raise SignatureExpireFormatError('Date Format Error')
+        except Exception:
+            raise SignatureExpireFormatError('Date Format Error')
 
         now = datetime.datetime.utcnow()
 
@@ -422,13 +419,12 @@ class SignatureAuthMiddleware(object):
             self.logger.warn(
                 'Unable to parse expiration time from token: %s', token_data)
             raise ServiceError('invalid json response')
-
         return token_data
 
     def check_signature(self, secret_key, credentials):
         signer = Ec2Signer(secret_key, self.logger)
         signature = signer.generate(credentials)
-	self.logger.warn('check Signature, in %s, current %s' % (credentials['signature'], signature))
+        self.logger.warn('check Signature, in %s, current %s' % (credentials['signature'], signature))
         if self.auth_str_equal(credentials['signature'], signature):
             return
         else:
