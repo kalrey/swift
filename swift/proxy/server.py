@@ -405,7 +405,6 @@ class Application(object):
         except HTTPException as error_response:
             return error_response
         except (Exception, Timeout):
-            logging.exception('Unhandled exception')
             self.logger.exception(_('ERROR Unhandled exception in request'))
             return HTTPServerError(request=req)
 
