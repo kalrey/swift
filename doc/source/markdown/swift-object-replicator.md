@@ -129,7 +129,7 @@ replicator已replicat函数为业务入口
                 try:
                     job_path = join(obj_path, partition)
                     if isfile(job_path):
-						#清楚掉该层目录下的文件（该层只应该出现partition目录）
+						#清除掉该层目录下的文件（该层只应该出现partition目录）
                         # Clean up any (probably zero-byte) files where a
                         # partition should be.
                         self.logger.warning(

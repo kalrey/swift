@@ -11,3 +11,5 @@ simplejson>=2.0.9
 xattr>=0.4
 PyECLib>=1.0.7
 M2Crypto>=0.20.0
+iso8601>=0.1.10
+requests>=2.7.0
