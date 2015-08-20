@@ -120,6 +120,8 @@ class SwiftLog(object):
         self.role = None
         self.logPrefix = None
         self.logTarget = None
+        self.via = None
+        self.cdnIp = None
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -210,7 +212,11 @@ class ProxyLoggingMiddleware(object):
         duration_time_str = "%.4f" % (end_time - start_time)
 
         logInfo = SwiftLog()
-        logInfo.remoteClient = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(get_remote_client(req))
+        logInfo.remoteClient = req.headers.get('Cdn-Src-Ip', None)
+        if logInfo.remoteClient is None:
+            logInfo.remoteClient = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(get_remote_client(req))
+        else:
+            logInfo.cdnIp = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(get_remote_client(req))
         logInfo.remoteAddr = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.remote_addr)
         logInfo.date = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(time.strftime('%Y/%m/%d/%H/%M/%S', time.localtime()))
         logInfo.method = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(method)
@@ -246,6 +252,7 @@ class ProxyLoggingMiddleware(object):
         logInfo.logPrefix = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.log_prefix'))
         logInfo.logTarget = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('swift.log_target'))
         logInfo.origPathInfo = (lambda x : quote(str(x), QUOTE_SAFE) if x else x)(req.environ.get('ORIG_PATH_INFO'))
+        logInfo.via = req.headers.get('Via', None)
         self.access_logger.notice(logInfo)
 
 
