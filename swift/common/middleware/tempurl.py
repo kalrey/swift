@@ -345,6 +345,7 @@ class TempURL(object):
         env['QUERY_STRING'] = urlencode(qs)
 
         def _start_response(status, headers, exc_info=None):
+            disposition_value = None
             headers = self._clean_outgoing_headers(headers)
             if env['REQUEST_METHOD'] == 'GET' and status[0] == '2':
                 # figure out the right value for content-disposition
@@ -365,12 +366,21 @@ class TempURL(object):
                 elif existing_disposition:
                     disposition_value = existing_disposition
                 else:
-                    name = basename(env['PATH_INFO'].rstrip('/'))
-                    disposition_value = disposition_format(name)
+                    #modify by kalrey
+                    #name = basename(env['PATH_INFO'].rstrip('/'))
+                    #disposition_value = disposition_format(name)
+                    pass
+                    #end by kalrey
                 # this is probably just paranoia, I couldn't actually get a
                 # newline into existing_disposition
-                value = disposition_value.replace('\n', '%0A')
-                out_headers.append(('Content-Disposition', value))
+                #add by kalrey
+                if disposition_value:
+                    value = disposition_value.replace('\n', '%0A')
+                    out_headers.append(('Content-Disposition', value))
+                #delete by kalrey
+                #value = disposition_value.replace('\n', '%0A')
+                #out_headers.append(('Content-Disposition', value))
+                #end by kalrey
                 headers = out_headers
             return start_response(status, headers, exc_info)
 

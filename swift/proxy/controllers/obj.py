@@ -70,6 +70,11 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPNotFound, \
 from swift.common.request_helpers import is_sys_or_user_meta, is_sys_meta, \
     remove_items, copy_header_subset, close_if_possible
 
+#add by kalrey
+from swift.common.middleware.tempurl import disposition_format
+from urlparse import parse_qs
+#end by kalrey
+
 
 def copy_headers_into(from_r, to_r):
     """
@@ -248,6 +253,18 @@ class BaseObjectController(Controller):
         if resp.headers.get('x-content-length', None):
             req.environ['swift.object_length'] = resp.headers.get('x-content-length')
             resp.headers.pop('x-content-length')
+        #end by kalrey
+        #add by kalrey
+        if req.method == 'GET' and req.query_string:
+            qs = parse_qs(req.query_string, keep_blank_values=True)
+            if 'filename' in qs:
+                filename = qs['filename'][0]
+                disposition_value = None
+                if filename:
+                    disposition_value = disposition_format(filename)
+                if disposition_value:
+                    value = disposition_value.replace('\n', '%0A')
+                    resp.headers['Content-Disposition'] = value
         #end by kalrey
         return resp
 
