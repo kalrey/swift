@@ -207,6 +207,11 @@ class SignatureAuthMiddleware(object):
     def __init__(self, app, conf):
         self.app = app
         self.conf = conf
+        #add by kalrey
+        self.pass_hosts = self.conf.get('pass_hosts', None)
+        if self.pass_hosts is not None:
+            self.pass_hosts = self.pass_hosts.split(',')
+        #end by kalrey
         self.identity_uri = self.conf.get('auth_uri')
         self.logger = swift_utils.get_logger(conf, log_route='signature_auth')
         self.logger.info('Starting signature authenticate middleware')
@@ -232,7 +237,7 @@ class SignatureAuthMiddleware(object):
 
         gmt_date = req.headers.get('date')
 
-        self.check_signature_expire(gmt_date)
+        self.check_signature_expire(gmt_date, env)
 
         ver, account, container, obj = req.split_path(2, 4, rest_with_last=True)
         canonicalize_headers = {}
@@ -353,12 +358,20 @@ class SignatureAuthMiddleware(object):
 
         return response, data
 
-    def check_signature_expire(self, date):
+    def check_signature_expire(self, date, env):
         try:
             gmt_format = "%a, %d %b %Y %H:%M:%S GMT"
             expire_time = datetime.datetime.strptime(date, gmt_format)
         except Exception:
             raise SignatureExpireFormatError('Date Format Error')
+
+        #add by kalrey
+        #DO NOT check the expire WHILE the host is set as pass hosts
+        host = env.get('HTTP_HOST', None)
+        if host is not None and self.pass_hosts is not None:
+            if host in self.pass_hosts:
+                return
+        #end by kalrey
 
         now = datetime.datetime.utcnow()
 
