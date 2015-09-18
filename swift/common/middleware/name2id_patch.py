@@ -3,7 +3,10 @@ __author__ = 'kalrey'
 
 import logging
 import requests
-from keystoneclient.openstack.common import jsonutils
+#modify by byliu
+#from keystoneclient.openstack.common import jsonutils
+import json as jsonutils
+#end by byliu
 from swift.common.utils import cache_from_env
 
 class NetworkError(Exception):
